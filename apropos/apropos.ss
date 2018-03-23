@@ -120,11 +120,18 @@ prelude: :<core>
 (def (current-expander-context-table-regexp pat)
   "This matches PAT for each bound identifier in the
    current context. Return a table of '(key . #<import-binding>.)"
+
+  (def (ensure-string elt)
+    (if (symbol? elt)
+      (symbol->string elt)
+      elt))
+
   (let ((bindings (gx#expander-context-table
                    (gx#current-expander-context))))
     (hash-filter bindings
                  (lambda (key binding)
-                   (pregexp-match pat (symbol->string key))))))
+                   (pregexp-match (ensure-string pat)
+                                  (symbol->string key))))))
 
 (def (apr-single sym)
   (let ((binding ((gx#resolve-identifier sym))))
@@ -134,11 +141,6 @@ prelude: :<core>
   "The function will match the pattern to any bound symbols
    in the current context and return info on the (if so) bound
    value."
-  (def (string<- elt)
-    (if (symbol? elt)
-      (symbol->string elt)
-      elt))
-
   (let ((apr-info '()))
     (hash-for-each (lambda (k v)
                      (let ((binding (gx#resolve-identifier k)))
