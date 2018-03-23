@@ -31,11 +31,19 @@ prelude: :<core>
 (def (slot-names obj)
   (type-descriptor-plist (object-type obj)))
 
+(def (object->list obj)
+  (cond ((class-instance? obj)
+         (class->list obj))
+        ((struct-instance? obj)
+         (struct->list obj))))
+
 (def (object-slot-info obj)
   (cons (object-type obj)
         (map (cut cons <> <>)
              (append-map cdr (slot-names obj))
-             (cdr (all-slots obj)))))
+             ;; Works for class as well.
+             ;; will return names though.
+             (cdr (struct->list obj)))))
 
 ;; binding info
 
