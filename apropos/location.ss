@@ -1,5 +1,4 @@
 (import (only-in :std/sort sort)
-        (only-in :clan/utils/base file-directory?)
         (only-in :gerbil/gambit/ports write-string force-output)
         :std/pregexp
         :std/srfi/1

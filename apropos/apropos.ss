@@ -13,7 +13,7 @@ prelude: :<core>
 
         :std/misc/rtd
 
-        (only-in :clan/utils/base compose if-let)
+        (only-in :clan/utils/base compose if-let !>)
         (only-in :clan/utils/filesystem find-files)
         (only-in :clan/utils/hash hash-filter)
         (only-in :clan/utils/date sleep)
@@ -31,14 +31,12 @@ prelude: :<core>
 
         :std/parser
 
-        :gerbil/tools/gxtags
+        (except-in :gerbil/tools/gxtags file-directory?)
 
-        "location")
+        "location"
+        "utils")
 
 (export #t )
-
-
-;;;;
 
 (def (get-tags mod-ctx)
   (let ((path (gx#module-context-path mod-ctx)))
@@ -126,7 +124,7 @@ prelude: :<core>
     (error "Not a binding." binding)))
 
 (def (operation-lambda-list binding loc)
-  (let (dproc (##decompile proc/val))
+  (let (dproc (##decompile (eval (gx#binding-id binding))))
     (if (list? dproc)
       (cadr dproc)
       #f)))
