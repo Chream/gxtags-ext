@@ -218,12 +218,3 @@ prelude: :<core>
                        (hash-put! table k (binding-info import-e))))
                    table)
     table))
-
-
-(def failures '())
-
-(def (add-failure obj)
-  (set! failures (cons obj failures)))
-
-(def (clear)
-  (set! failures '()))
