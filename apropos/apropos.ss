@@ -152,11 +152,9 @@ prelude: :<core>
         (else (error "unknown binding type: "
                 binding))))
 
-
-
 (def (expander-context-table-all)
-  "This returns all bindings for all phi in the
-   running process. Returns `table' of (key . <binding>)."
+  "Finds all bindings for all phi contexts.
+   Returns `table' of (key . <binding>)."
   (let lp ((ctx (current-expander-context))
            (table (make-hash-table))
            (going-up? #t))
@@ -165,20 +163,29 @@ prelude: :<core>
       (cond ((and table-empty? (not going-up?))
              table)
             ((and table-empty? going-up?)
-             (lp (gx#core-context-shift (gx#current-expander-context)  1) table #f))
+             ;; Resets to phi=0 and goes down.
+             (lp (gx#core-context-shift (gx#current-expander-context)  1)
+                 table
+                 #f))
             (going-up?
-             (lp (gx#core-context-shift ctx 1) (hash-merge! t table) going-up?))
+             (lp (gx#core-context-shift ctx 1)
+                 (hash-merge! t table)
+                 going-up?))
             ((not going-up?)
-             (lp (gx#core-context-shift ctx -1) (hash-merge! t table) going-up?))
+             (lp (gx#core-context-shift ctx -1)
+                 (hash-merge! t table)
+                 going-up?))
             (else (error "wtf?"))))))
 
 (def (expander-context-table-phi phi)
+  "Finds all bindings for given PHI context.
+   Returns `table' of (key . <binding>)."
   (gx#expander-context-table
    (gx#core-context-shift (gx#current-expander-context) phi)))
 
 (def (expander-context-table-regex pat (phi 0))
   "This matches PAT for each bound identifier in the
-   current context. Return a table of (key . #<import-binding>.)"
+   current context. Return a `table' of (key . #<import-binding>.)"
   (def (ensure-string elt)
     (if (symbol? elt)
       (symbol->string elt)
@@ -201,7 +208,7 @@ prelude: :<core>
     (binding-info binding)))
 
 (def (apr pat)
-  "The function will match the pattern to any bound symbols
+  "The function will match PAT to any bound identifiers
    in the current context and return info on the (if so) bound
    value."
   (let ((table (expander-context-table-regex pat all:)))
