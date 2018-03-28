@@ -136,67 +136,9 @@ prelude: :<core>
       (cadr dproc)
       #f)))
 
-(def (syntax-binding-info b)
-    (let* ((e (gx#syntax-binding-e b))
-           (info-object (gx#expander-e e))
-           (type-sym
-            (cond ((procedure? info-object)
-                   'macro)
-                  ((runtime-struct-info? info-object)
-                   'struct)
-                  ((runtime-class-info? info-object)
-                   'class)
-                  (else #f)))
-           (slots
-            (cond ((runtime-struct-info? info-object)
-                   (runtime-struct-fields (runtime-type-exhibitor info-object)))
-                  ((runtime-class-info? info-object)
-                   (runtime-class-slots (runtime-type-exhibitor info-object)))
-                  (else #f)))
-           (ns
-            (cond ((user-expander? e)
-                   (gx#module-context-ns (gx#user-expander-context e)))
-                  ((macro-expander? e) "macroexp")
-                  (else (error "unknown expander." e))))
-           (loc (lookup-location-id (binding-id b)))
+(def (binding-phi binding)
+  (gx#binding-phi binding))
 
-           (phi (gx#binding-phi b)))
-      (list key: (binding-id b)
-            binding: b
-            type: type-sym
-            phi: phi
-            slots: slots
-            info-object: info-object
-            ns: ns
-            location: loc)))
-
-(def (module-binding-info b)
-  (let* ((module-context (module-binding-context b))
-         (ns (gx#module-context-ns module-context))
-         (proc/val  (unless (uninterned-symbol? (gx#binding-id b))
-                      (eval (gx#binding-id b))))
-         (type (if (procedure? proc/val)
-                 'procedure
-                 'variable))
-         (arg-list (if (eq? type 'procedure)
-                     (let (dproc (##decompile proc/val))
-                       (if (list? dproc)
-                         (cadr dproc)
-                         #f))
-                     #f))
-         (loc (lookup-location-id (binding-id b)))
-         (phi (gx#binding-phi b)))
-    (list (binding-id b)
-          binding: b
-          type: type
-          phi: phi
-          ns: ns
-          arg-list: arg-list
-          location: loc)))
-
-(def (alias-binding-info b)
-  (list (binding-id b)
-        binding: b))
 
 (def (binding-info binding)
   (cond ((gx#syntax-binding? binding)
