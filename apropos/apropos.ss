@@ -125,32 +125,25 @@ prelude: :<core>
     (lookup-location-id (gx#binding-id binding))
     (error "Not a binding." binding)))
 
-(def (procedure-lambda-list binding loc)
+(def (operation-lambda-list binding loc)
   (let (dproc (##decompile proc/val))
     (if (list? dproc)
       (cadr dproc)
       #f)))
 
-(def (binding-phi binding)
-  (gx#binding-phi binding))
-
-
 (def (binding-info binding)
-  (cond ((gx#syntax-binding? binding)
-         ;; Code for macro bindings
-         (syntax-binding-info binding))
-        ((gx#extern-binding? binding)
-         ;; code for external bindings
-         (list binding 'extern-binding))
-        ((gx#module-binding? binding)
-         ;; code for module bindings
-         (module-binding-info binding))
-        ((gx#alias-binding? binding)
-         (alias-binding-info binding))
-        ((gx#import-binding? binding)
-         (binding-info (gx#import-binding-e binding)))
-        (else (error "unknown binding type: "
-                binding))))
+  (let* ((type (binding-type binding))
+         (xns  (binding-ns binding))
+         (slots (if (or (eq? type 'class)
+                        (eq? type 'struct))
+                  (structure-slots binding)
+                  #f))
+         (phi (gx#binding-phi binding))
+         (loc (binding-location binding))
+         (binding-lamlist (if (or (eq? type 'procedure)
+                                  (eq? type 'macro))
+                            (operation-lambda-list binding loc))))
+    (list type xns slots phi loc binding-lamlist)))
 
 (def (expander-context-table-all)
   "Finds all bindings for all phi contexts.
