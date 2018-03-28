@@ -87,6 +87,14 @@
   (##procedure-name proc))
 
 
+;; Hash tables
+
+(def (hash-empty? table)
+  (if (zero? (hash-length table))
+    #t
+    #f))
+
+
 ;; (match self
 ;;   ((import-binding id _ _ _ ctx _) ; id key phi e ctx weak?
 ;;    (list id (object-slot-info ctx)))

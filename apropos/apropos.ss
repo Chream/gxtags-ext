@@ -44,11 +44,6 @@ prelude: :<core>
   (let ((path (gx#module-context-path mod-ctx)))
     (get-tags-source-file path)))
 
-(def (my-stream foo)
-  (call-with-input-file (path-normalize "~/repos/gerbil/apropos/apropos/apropos.ss")
-    (lambda (in)
-      (let ((cs (make-char-stream in)))
-        (char-stream-getc cs)))))
 
 (defrules foo ()
   ((_ bar)
@@ -157,10 +152,7 @@ prelude: :<core>
         (else (error "unknown binding type: "
                 binding))))
 
-(def (hash-empty? table)
-  (if (zero? (hash-length table))
-    #t
-    #f))
+
 
 (def (expander-context-table-all)
   "This returns all bindings for all phi in the
