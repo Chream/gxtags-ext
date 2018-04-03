@@ -2,6 +2,7 @@
         :std/format
         :std/misc/rtd
         :std/pregexp
+        (only-in :std/text/json read-json json-symbolic-keys)
         (only-in :gerbil/gambit/threads thread-join! spawn)
         (only-in :clan/utils/hash hash-filter))
 
@@ -185,10 +186,13 @@
 (define-syntax logg
   (syntax-rules ()
     ((_ . var)
-     (append-map)
      `(begin
         (display (format "~S is: " ',var))
         (prn var)))))
+
+(def (read-json-equal in)
+  (parameterize ((json-symbolic-keys #f))
+    (read-json in)))
 
 
 
