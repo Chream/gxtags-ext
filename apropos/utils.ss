@@ -182,16 +182,13 @@
 
 ;; printing
 
-(def (pp-json json)
-  (def (name tree) (car tree))
-  (def (children tree) (let (rest (cdr tree))
-                         (if (hash-table? rest)
-                           (hash->list rest)
-                           rest)))
-  (let (tree (cons "json-table" (hash->list json)))
-    (dolist (child (children tree))
-            (displayln (format "~% ~S : ~S ~%"
-                               (name tree) (name child))))))
+(define-syntax logg
+  (syntax-rules ()
+    ((_ . var)
+     (append-map)
+     `(begin
+        (display (format "~S is: " ',var))
+        (prn var)))))
 
 
 

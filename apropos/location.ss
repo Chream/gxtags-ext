@@ -69,17 +69,6 @@
            (cdr (module-tags ctx xtab)))))
    (else #f)))
 
-(def (--tags-check tags)
-  (for-each (lambda (x) (if (eq? (car x) (caadr x))
-                          (error "not equal. ~S != ~S." (car x) (caadr x))))
-            (cdr tags)))
-
-(def (write-symbol-tag key position (out (current-output-port)))
-  (write key out)
-  (write-char #\, out)
-  (write position out)
-  (newline out))
-
 (def (make-tag-table module)
   (let (ht (make-hash-table))
     (hash-put! ht "module" module)
