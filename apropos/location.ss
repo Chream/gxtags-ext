@@ -1,9 +1,13 @@
 (import (only-in :std/sort sort)
-        (only-in :gerbil/gambit/ports write-string force-output)
+        (only-in :gerbil/gambit/ports write-string force-output read-all-as-string)
+        (only-in :std/misc/ports read-file-string)
         (only-in :std/misc/string string-trim-prefix)
+        :std/text/json
         :std/pregexp
         :std/srfi/1
         :std/srfi/13
+        :std/format
+        :std/misc/repr
         (only-in :gerbil/expander
                  core-resolve-module-export
                  binding-id
@@ -12,6 +16,10 @@
         (only-in :gerbil/tools/gxtags
                  try-import-module
                  module-tags)
+
+        (only-in :clan/utils/files clobber-file maybe-replace-file)
+        (only-in :clan/utils/base if-let)
+        (only-in :clan/utils/hash hash-ensure-ref)
         "utils")
 
 (export #t)
@@ -72,33 +80,66 @@
   (write position out)
   (newline out))
 
-(def (register-tags tags)
+(def (make-tag-table module)
+  (let (ht (make-hash-table))
+    (hash-put! ht "module" module)
+    (hash-put! ht "files" (make-hash-table))
+    ht))
+
+(def (register-tag! ht filename key locat)
+  (let* ((position (if (number? locat)
+                     locat
+                     (filepos-line (locat-position locat))))
+         (files-table (hash-get ht "files"))
+         (tags-table (hash-ensure-ref files-table filename make-hash-table)))
+    (hash-ensure-ref tags-table key (lambda () position))))
+
+(def (register-tags filename tags)
   "Takes a `list' of tags, each entry of the form '(ID (KEY . ROOT-MODULE) LOCAT)."
+
   (def (make-path module)
-    (check-type string? module)
-    (string-append gtagspath (pregexp-replace* "/" module
-                                               "__")))
-  (let lp ((tags tags))
-    (unless (or (null? tags) (not tags))
-      (let ((tag (car tags))
-            (rest (cdr tags)))
-        (match tag
-          ([_ [key . root-module] locat]
-           (call-with-output-file [path: (make-path root-module) append: #t]
-             (lambda (out)
-               (let* ((position (locat-position locat)))
-                 (write-symbol-tag key position out)
-                 (force-output out)))))
-          (else
-           (call-with-output-file [path: (make-path "__error__") append: #t]
-             (lambda (out)
-               (write-string (string-append "Illegal tag: " tag) out)
-               (newline out)
-               (force-output out)))))
-        (lp rest)))))
+    (string-append gtagspath
+                   (pregexp-replace* "/" module
+                                     "__")
+                   ".json"))
+
+  (def (update-json json path module-tags)
+    (let (json (string->json-object (json-object->string json)))
+      (let lp ((tags module-tags))
+        (if (or (null? tags) (not tags))
+          json
+          (let ((tag (car tags))
+                (rest (cdr tags)))
+            (match tag
+              ([_ [key . root-module] locat]
+               (register-tag! json path (ensure-string key) locat))
+              (else
+               (error "whyy.")))
+            (lp rest))))))
+
+  (let (tags-by-module (group-by (lambda (tag) (cdadr tag)) tags))
+    (for-each
+      (lambda (module-spec)
+        (let* ((module-name (car module-spec))
+               (module-tags (cdr module-spec))
+               (path (path-normalize (make-path module-name))))
+          (parameterize ((json-symbolic-keys #f))
+            (if (file-exists? path)
+              (maybe-replace-file path
+                                  (lambda (json)
+                                    (let (new-json (update-json json filename module-tags))
+                                      new-json))
+                                  reader: read-json
+                                  writer: write-json)
+              (let ((json-table (make-tag-table module-name)))
+                (call-with-output-file [path: path create: #t]
+                  (lambda (out)
+                    (write-json (update-json json-table filename module-tags) out)
+                    (force-output out))))))))
+              tags-by-module)))
 
 (def (tag-srcfile filename)
-  (register-tags (read-tags-srcfile (path-normalize filename))))
+  (register-tags filename (read-tags-srcfile (path-normalize filename))))
 
 (def (tag-directory dirname)
   (let* ((dirname (path-normalize dirname))

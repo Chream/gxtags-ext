@@ -24,7 +24,9 @@
   (##locat-container locat))
 
 (def (locat-position locat)
-  (##locat-position locat))
+  (if (locat? locat)
+    (##locat-position locat)
+    (error "Not locat object: " locat)))
 
 (def (path->container-hook-set! x)
   (##path->container-hook-set! x))
@@ -156,6 +158,41 @@
                (mod-id (gx#expander-context-id ctx)))
           (lp e (cons mod-id modules)))
         modules))))
+
+(def (ensure-string key)
+  (cond ((symbol? key)
+         (symbol->string key))
+        ((list? key)
+         (format "~s" key))
+        ((pair? key)
+         (car key))
+        ((string? key) key)
+        (else (error "wtf?" key))))
+
+(def (ensure-symbol key)
+  (cond ((symbol? key) => values)
+        (else (error "wtf? " key))))
+
+;; looping
+
+(define-syntax dolist
+  (syntax-rules ()
+    ((_ (e lis) exprs ...)
+     (for-each (lambda (e) exprs ...) lis))))
+
+;; printing
+
+(def (pp-json json)
+  (def (name tree) (car tree))
+  (def (children tree) (let (rest (cdr tree))
+                         (if (hash-table? rest)
+                           (hash->list rest)
+                           rest)))
+  (let (tree (cons "json-table" (hash->list json)))
+    (dolist (child (children tree))
+            (displayln (format "~% ~S : ~S ~%"
+                               (name tree) (name child))))))
+
 
 
 
