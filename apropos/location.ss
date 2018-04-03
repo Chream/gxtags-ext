@@ -18,7 +18,7 @@
                  module-tags)
 
         (only-in :clan/utils/files clobber-file maybe-replace-file)
-        (only-in :clan/utils/base if-let)
+        (only-in :clan/utils/base if-let nest)
         (only-in :clan/utils/hash hash-ensure-ref)
         "utils")
 
@@ -27,22 +27,23 @@
 (def (resolve-module-export-root-module xport (ctx (gx#current-expander-context)))
   "Takes XPORT, a `module-export' and returns
    the module name, a `string', in which it is defined."
-  (let ((xport-key (gx#module-export-key xport))
-        (ctx-table (expander-context-table-all ctx)))
-    (let lp ((binding (hash-get ctx-table xport-key)))
-      (let (context-id (cond ((gx#import-binding? binding)
-                              (if (not (gx#import-binding?
-                                        (gx#import-binding-e binding)))
-                                (gx#expander-context-id
-                                 (gx#import-binding-context binding))
-                                (lp (gx#import-binding-e binding))))
-                             ((gx#module-binding? binding)
-                              (gx#expander-context-id
-                               (gx#module-binding-context binding)))
-                             (else (gx#expander-context-id ctx))))
-        (cond ((symbol? context-id) (symbol->string context-id))
-              ((string? context-id) context-id)
-              (else (error "cant resolve.")))))))
+  (nest
+   (let ((xport-key (gx#module-export-key xport))
+         (ctx-table (expander-context-table-all ctx))))
+   (let lp ((binding (hash-get ctx-table xport-key))))
+   (let (context-id (cond ((gx#import-binding? binding)
+                           (if (not (gx#import-binding?
+                                     (gx#import-binding-e binding)))
+                             (gx#expander-context-id
+                              (gx#import-binding-context binding))
+                             (lp (gx#import-binding-e binding))))
+                          ((gx#module-binding? binding)
+                           (gx#expander-context-id
+                            (gx#module-binding-context binding)))
+                          (else (gx#expander-context-id ctx))))
+     (cond ((symbol? context-id) (symbol->string context-id))
+           ((string? context-id) context-id)
+           (else (error "cant resolve."))))))
 
 (def (read-tags-srcfile filename)
   "Returns a list of tags. Format is:
@@ -50,6 +51,7 @@
     where MODULES-EXPORTED is a list of modules where
     the corresponding symbol is exported from. LOCATION
     is a `locat' structure which contains the location infomation."
+
   (cond
    ((try-import-module filename)
     => (lambda (ctx)
@@ -58,15 +60,17 @@
                (xports (gx#module-context-export ctx)))
            (for-each
              (lambda (xport)
-               (let* ((bind (core-resolve-module-export xport)))
+               (let* ((bind (core-resolve-module-export xport))
+                      (name (module-export-name xport))
+                      (export-root-module (resolve-module-export-root-module xport ctx)))
                  (hash-update! xtab (binding-id bind)
-                            (cut cons
-                                 (cons (module-export-name xport)
-                                       (resolve-module-export-root-module xport ctx))
-                                 <>)
-                            [])))
+                               (cut cons
+                                    (cons name export-root-module)
+                                    <>)
+                               [])))
              xports)
-           (cdr (module-tags ctx xtab)))))
+           (let (res (cdr (module-tags ctx xtab)))
+             res))))
    (else #f)))
 
 (def (make-tag-table module)
@@ -75,15 +79,15 @@
     (hash-put! ht "files" (make-hash-table))
     ht))
 
-(def (register-tag! ht filename key locat)
-  (let* ((position (if (number? locat)
-                     locat
-                     (filepos-line (locat-position locat))))
+(def (put-tag! ht filename key locat)
+  (let* ((position (if (locat? locat)
+                     (filepos-line (locat-position locat))
+                     locat))
          (files-table (hash-get ht "files"))
          (tags-table (hash-ensure-ref files-table filename make-hash-table)))
     (hash-ensure-ref tags-table key (lambda () position))))
 
-(def (register-tags filename tags)
+(def (put-tags filename tags)
   "Takes a `list' of tags, each entry of the form '(ID (KEY . ROOT-MODULE) LOCAT)."
 
   (def (make-path module)
@@ -93,18 +97,19 @@
                    ".json"))
 
   (def (update-json json path module-tags)
-    (let (json (string->json-object (json-object->string json)))
-      (let lp ((tags module-tags))
-        (if (or (null? tags) (not tags))
-          json
-          (let ((tag (car tags))
-                (rest (cdr tags)))
-            (match tag
-              ([_ [key . root-module] locat]
-               (register-tag! json path (ensure-string key) locat))
-              (else
-               (error "whyy.")))
-            (lp rest))))))
+    (nest
+     (let (json (string->json-object (json-object->string json))))
+     (let lp ((tags module-tags))
+       (if (or (null? tags) (not tags))
+         json
+         (let ((tag (car tags))
+               (rest (cdr tags)))
+           (match tag
+             ([_ [key . root-module] locat]
+              (put-tag! json path (ensure-string key) locat))
+             (else
+              (error "whyy.")))
+           (lp rest))))))
 
   (let (tags-by-module (group-by (lambda (tag) (cdadr tag)) tags))
     (for-each
@@ -118,7 +123,7 @@
                                   (lambda (json)
                                     (let (new-json (update-json json filename module-tags))
                                       new-json))
-                                  reader: read-json
+                                  reader: read-json-equal
                                   writer: write-json)
               (let ((json-table (make-tag-table module-name)))
                 (call-with-output-file [path: path create: #t]
@@ -127,10 +132,10 @@
                     (force-output out))))))))
               tags-by-module)))
 
-(def (tag-srcfile filename)
-  (register-tags filename (read-tags-srcfile (path-normalize filename))))
+(def (put-tag-srcfile filename)
+  (put-tags filename (read-tags-srcfile (path-normalize filename))))
 
-(def (tag-directory dirname)
+(def (put-tag-directory dirname)
   (let* ((dirname (path-normalize dirname))
          (files (sort (directory-files dirname) string<?))
         (result '()))
@@ -139,15 +144,15 @@
         (let ((path (path-expand file dirname)))
           (when (or (file-directory? path)
                     (pregexp-match "[^ssxi].ss$" path))
-            (tag-input path))))
+            (put-tag-input path))))
       files)))
 
-(def (tag-input input)
+(def (put-tag-input input)
   (let (input (path-normalize input))
     (if (file-exists? input)
       (if (file-directory? input)
-        (tag-directory input)
-        (tag-srcfile input))
+        (put-tag-directory input)
+        (put-tag-srcfile input))
       (error "No such file or directory" input))))
 
 (def (lookup-location-regexp pat (ns #f))
