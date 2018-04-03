@@ -24,27 +24,6 @@
 
 (export #t)
 
-(def (resolve-module-export-root-module xport (ctx (gx#current-expander-context)))
-  "Takes XPORT, a `module-export' and returns
-   the module name, a `string', in which it is defined."
-  (nest
-   (let ((xport-key (gx#module-export-key xport))
-         (ctx-table (expander-context-table-all ctx))))
-   (let lp ((binding (hash-get ctx-table xport-key))))
-   (let (context-id (cond ((gx#import-binding? binding)
-                           (if (not (gx#import-binding?
-                                     (gx#import-binding-e binding)))
-                             (gx#expander-context-id
-                              (gx#import-binding-context binding))
-                             (lp (gx#import-binding-e binding))))
-                          ((gx#module-binding? binding)
-                           (gx#expander-context-id
-                            (gx#module-binding-context binding)))
-                          (else (gx#expander-context-id ctx))))
-     (cond ((symbol? context-id) (symbol->string context-id))
-           ((string? context-id) context-id)
-           (else (error "cant resolve."))))))
-
 (def (read-tags-srcfile filename)
   "Returns a list of tags. Format is:
    '(ID (KEY . ROOT-MODULE) LOCATION).
@@ -79,22 +58,23 @@
     (hash-put! ht "files" (make-hash-table))
     ht))
 
-(def (put-tag! ht filename key locat)
-  (let* ((position (if (locat? locat)
-                     (filepos-line (locat-position locat))
-                     locat))
-         (files-table (hash-get ht "files"))
-         (tags-table (hash-ensure-ref files-table filename make-hash-table)))
-    (hash-ensure-ref tags-table key (lambda () position))))
-
-(def (put-tags filename tags)
-  "Takes a `list' of tags, each entry of the form '(ID (KEY . ROOT-MODULE) LOCAT)."
+(def (put-tag-srcfile filename)
 
   (def (make-path module)
     (string-append gtagspath
                    (pregexp-replace* "/" module
                                      "__")
                    ".json"))
+
+  (def (put-tag! ht filename key locat)
+    (let* ((position (if (locat? locat)
+                       (filepos-line (locat-position locat))
+                       locat))
+           (files-table (hash-get ht "files"))
+           (tags-table (hash-ensure-ref files-table
+                                        filename
+                                        make-hash-table)))
+      (hash-ensure-ref tags-table key (lambda () position))))
 
   (def (update-json json path module-tags)
     (nest
@@ -110,6 +90,10 @@
              (else
               (error "whyy.")))
            (lp rest))))))
+
+  (def (put-tags filename tags)
+  "Takes a `list' of tags, each entry of the form:
+   '(ID (KEY . ROOT-MODULE) LOCAT)."
 
   (let (tags-by-module (group-by (lambda (tag) (cdadr tag)) tags))
     (for-each
@@ -132,7 +116,6 @@
                     (force-output out))))))))
               tags-by-module)))
 
-(def (put-tag-srcfile filename)
   (put-tags filename (read-tags-srcfile (path-normalize filename))))
 
 (def (put-tag-directory dirname)
@@ -165,10 +148,10 @@
       (lookup-tag-regexp-input pat gtagspath)
       result)))
 
-(def (lookup-tag-symbol sym (ns #f))
+(def (lookup-tag key (ns #f))
   (let (matches (lookup-tag-regexp
                  (string-append "^"
-                                (symbol->string sym)
+                                (symbol->string key)
                                 "$")
                  ns))
     (cond ((null? matches)        #f)
@@ -178,7 +161,7 @@
 (def (lookup-tag-id id)
   (let ((ns (id->ns id))
         (key (id->key id)))
-    (lookup-tag-symbol (if (string? key) (string->symbol key) key) ns)))
+    (lookup-tag (if (string? key) (string->symbol key) key) ns)))
 
 (def (lookup-tag-regexp-input pat input (ns #f))
   (if (file-exists? input)
@@ -227,6 +210,27 @@
 
 
 ;; Utils
+
+(def (resolve-module-export-root-module xport (ctx (gx#current-expander-context)))
+  "Takes XPORT, a `module-export' and returns
+   the module name, a `string', in which it is defined."
+  (nest
+   (let ((xport-key (gx#module-export-key xport))
+         (ctx-table (expander-context-table-all ctx))))
+   (let lp ((binding (hash-get ctx-table xport-key))))
+   (let (context-id (cond ((gx#import-binding? binding)
+                           (if (not (gx#import-binding?
+                                     (gx#import-binding-e binding)))
+                             (gx#expander-context-id
+                              (gx#import-binding-context binding))
+                             (lp (gx#import-binding-e binding))))
+                          ((gx#module-binding? binding)
+                           (gx#expander-context-id
+                            (gx#module-binding-context binding)))
+                          (else (gx#expander-context-id ctx))))
+     (cond ((symbol? context-id) (symbol->string context-id))
+           ((string? context-id) context-id)
+           (else (error "cant resolve."))))))
 
 (def (group-by proc list)
   (if list
