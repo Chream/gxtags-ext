@@ -1,7 +1,9 @@
 (import :std/srfi/1
         :std/format
         :std/misc/rtd
-        (only-in :gerbil/gambit/threads thread-join! spawn))
+        :std/pregexp
+        (only-in :gerbil/gambit/threads thread-join! spawn)
+        (only-in :clan/utils/hash hash-filter))
 
 (export #t)
 
@@ -53,7 +55,7 @@
 
 ;; Type checking.
 
-(def (check-type obj specifier?)
+(def (check-type specifier? obj)
   (unless (specifier? obj)
     (error (format "Object ~S does not fulfill ~S"
                    obj specifier?))))
@@ -94,6 +96,79 @@
     #t
     #f))
 
+;; Expander context
+
+(def (expander-context-table-all (ctx (gx#current-expander-context)))
+  "Finds all bindings for all phi contexts.
+   Returns `table' of (key . <binding>)."
+  (let lp ((ctx-1 ctx)
+           (table (make-hash-table))
+           (going-up? #t))
+    (let* ((t (gx#expander-context-table ctx-1))
+           (table-empty? (hash-empty? t)))
+      (cond ((and table-empty? (not going-up?))
+             table)
+            ((and table-empty? going-up?)
+             ;; Resets to phi=0 and goes down.
+             (lp (gx#core-context-shift ctx  1)
+                 table
+                 #f))
+            (going-up?
+             (lp (gx#core-context-shift ctx-1 1)
+                 (hash-merge! t table)
+                 going-up?))
+            ((not going-up?)
+             (lp (gx#core-context-shift ctx-1 -1)
+                 (hash-merge! t table)
+                 going-up?))
+            (else (error "wtf?"))))))
+
+(def (expander-context-table-phi phi)
+  "Finds all bindings for given PHI context.
+   Returns `table' of (key . <binding>)."
+  (gx#expander-context-table
+   (gx#core-context-shift (gx#current-expander-context) phi)))
+
+(def (expander-context-table-regex pat (phi 0))
+  "This matches PAT for each bound identifier in the
+   current context. Return a `table' of (key . #<import-binding>.)"
+  (def (ensure-string elt)
+    (if (symbol? elt)
+      (symbol->string elt)
+      elt))
+
+  (let ((ctx-table (if (eq? phi all:)
+                     (expander-context-table-all)
+                     (expander-context-table-phi phi))))
+    (hash-filter ctx-table
+                 (lambda (k v)
+                   (pregexp-match (ensure-string pat) (symbol->string k))))))
+
+(def (all-modules-exported xport (ctx-table (expander-context-table-all)))
+  (let (xport-key (gx#module-export-key xport))
+    (let lp ((binding (hash-get ctx-table xport-key))
+             (modules (list (string->symbol
+                             (gx#module-context-ns
+                              (gx#module-export-context xport))))))
+      (if (gx#import-binding? binding)
+        (let* ((ctx (gx#import-binding-context binding))
+               (e (gx#import-binding-e binding))
+               (mod-id (gx#expander-context-id ctx)))
+          (lp e (cons mod-id modules)))
+        modules))))
+
+
+
+
+;; (def (collect-xns import-binding)
+;;   (let lp ((binding import-binding)
+;;            (result '()))
+;;     (if (not (gx#import-binding? binding))
+;;       (reverse result)
+;;       (lp (gx#import-binding-e binding)
+;;           (cons (gx#module-context-ns
+;;                  (gx#import-binding-context binding))
+;;                 result)))))
 
 ;; (match self
 ;;   ((import-binding id _ _ _ ctx _) ; id key phi e ctx weak?

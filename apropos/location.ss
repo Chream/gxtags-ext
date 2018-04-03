@@ -1,5 +1,6 @@
 (import (only-in :std/sort sort)
         (only-in :gerbil/gambit/ports write-string force-output)
+        (only-in :std/misc/string string-trim-prefix)
         :std/pregexp
         :std/srfi/1
         :std/srfi/13
@@ -15,112 +16,109 @@
 
 (export #t)
 
-(def (get-tags-input input)
-  (if (file-exists? input)
-    (if (file-directory? input)
-      (get-tags-directory input)
-      (get-tags-source-file input))
-    (error "No such file or directory" input)))
+(def (resolve-module-export-root-module xport (ctx (gx#current-expander-context)))
+  "Takes XPORT, a `module-export' and returns
+   the module name, a `string', in which it is defined."
+  (let ((xport-key (gx#module-export-key xport))
+        (ctx-table (expander-context-table-all ctx)))
+    (let lp ((binding (hash-get ctx-table xport-key)))
+      (let (context-id (cond ((gx#import-binding? binding)
+                              (if (not (gx#import-binding?
+                                        (gx#import-binding-e binding)))
+                                (gx#expander-context-id
+                                 (gx#import-binding-context binding))
+                                (lp (gx#import-binding-e binding))))
+                             ((gx#module-binding? binding)
+                              (gx#expander-context-id
+                               (gx#module-binding-context binding)))
+                             (else (gx#expander-context-id ctx))))
+        (cond ((symbol? context-id) (symbol->string context-id))
+              ((string? context-id) context-id)
+              (else (error "cant resolve.")))))))
 
-(def (get-tags-directory dirname)
-  (let (files (sort (directory-files dirname) string<?))
-    (for-each
-      (lambda (file)
-        (let ((path (path-expand file dirname)))
-          (when (or (file-directory? path)
-                    (member (path-extension path) '(".ss" ".ssi")))
-            (get-tags-input path))))
-      files)))
-
-(def (get-tags-source-file filename)
+(def (read-tags-srcfile filename)
+  "Returns a list of tags. Format is:
+   '(ID (KEY . ROOT-MODULE) LOCATION).
+    where MODULES-EXPORTED is a list of modules where
+    the corresponding symbol is exported from. LOCATION
+    is a `locat' structure which contains the location infomation."
   (cond
    ((try-import-module filename)
     => (lambda (ctx)
-         (let (xtab (make-hash-table-eq)) ; binding-id -> [export-name ...]
+         ;; binding-id -> [export-name ...]
+         (let ((xtab (make-hash-table-eq))
+               (xports (gx#module-context-export ctx)))
            (for-each
              (lambda (xport)
-               (let (bind (core-resolve-module-export xport))
+               (let* ((bind (core-resolve-module-export xport)))
                  (hash-update! xtab (binding-id bind)
-                               (cut cons (module-export-name xport) <>)
-                               [])))
-             (module-context-export ctx))
+                            (cut cons
+                                 (cons (module-export-name xport)
+                                       (resolve-module-export-root-module xport ctx))
+                                 <>)
+                            [])))
+             xports)
            (cdr (module-tags ctx xtab)))))
    (else #f)))
 
-(def (group-by proc list)
-  (if list
-    (let ((alist '()))
-      (for-each (lambda (e)
-                  (let* ((key (proc e))
-                         (res (assoc key alist)))
-                    (if res
-                      (set-cdr! res (cons e (cdr res)))
-                      (set! alist (cons [key e] alist)))))
-                list)
-      alist)
-    '()))
+(def (--tags-check tags)
+  (for-each (lambda (x) (if (eq? (car x) (caadr x))
+                          (error "not equal. ~S != ~S." (car x) (caadr x))))
+            (cdr tags)))
 
-(def gtagspath (path-normalize "~/.gerbil/tags/"))
+(def (write-symbol-tag key position (out (current-output-port)))
+  (write key out)
+  (write-char #\, out)
+  (write position out)
+  (newline out))
 
-(def (write-tags-input input)
-  (if (file-exists? input)
-    (if (file-directory? input)
-      (write-tags-directory input)
-      (write-tags-source-file input))
-    (error "No such file or directory" input)))
+(def (register-tags tags)
+  "Takes a `list' of tags, each entry of the form '(ID (KEY . ROOT-MODULE) LOCAT)."
+  (def (make-path module)
+    (check-type string? module)
+    (string-append gtagspath (pregexp-replace* "/" module
+                                               "__")))
+  (let lp ((tags tags))
+    (unless (or (null? tags) (not tags))
+      (let ((tag (car tags))
+            (rest (cdr tags)))
+        (match tag
+          ([_ [key . root-module] locat]
+           (call-with-output-file [path: (make-path root-module) append: #t]
+             (lambda (out)
+               (let* ((position (locat-position locat)))
+                 (write-symbol-tag key position out)
+                 (force-output out)))))
+          (else
+           (call-with-output-file [path: (make-path "__error__") append: #t]
+             (lambda (out)
+               (write-string (string-append "Illegal tag: " tag) out)
+               (newline out)
+               (force-output out)))))
+        (lp rest)))))
 
-(def (write-tags-directory dirname)
-  (let (files (sort (directory-files dirname) string<?))
+(def (tag-srcfile filename)
+  (register-tags (read-tags-srcfile (path-normalize filename))))
+
+(def (tag-directory dirname)
+  (let* ((dirname (path-normalize dirname))
+         (files (sort (directory-files dirname) string<?))
+        (result '()))
     (for-each
       (lambda (file)
         (let ((path (path-expand file dirname)))
           (when (or (file-directory? path)
-                    (member (path-extension path) '(".ss")))
-            (write-tags-input path))))
+                    (pregexp-match "[^ssxi].ss$" path))
+            (tag-input path))))
       files)))
 
-(def (id->ns id)
-  (let (r (string-split (symbol->string id) #\#))
-    (if (< 1 (length r))
-      (car (string-split (car r) #\[))
-      "gerbil/core")))
-
-(def (id->key id)
-  (let (r (string-split (symbol->string id) #\#))
-    (if (< 1 (length r))
-      (cadr r)
-      (cadr r))))
-
-(def (write-tags-source-file filename)
-  (def (write-locat locat (port (current-output-port)))
-    (let* ((path (locat-path locat))
-           (position (locat-position locat)))
-      (write position port)))
-
-  (def (write-tag tag (out (current-output-port)))
-    (with ([key id locat] tag)
-      (write id out)
-      (write-char #\, out)
-      (write-locat locat out)
-      (newline out)))
-
-  (def (make-nstag-path ns)
-    (string-append gtagspath (string-trim ns #\:)))
-
-  (let* ((grouped-tags (group-by (lambda (tag) (id->ns (car tag)))
-                         (get-tags-source-file filename))))
-    (for-each (match <>
-                ([ns . tags]
-                 (let (path (make-nstag-path ns))
-                   (create-directory* (path-directory path))
-                   (call-with-output-file [path: (path-normalize path) append: #t]
-                     (lambda (out)
-                       (write-string (string-append "***," filename) out)
-                       (newline out)
-                       (for-each (cut write-tag <> out) tags)
-                       (force-output out)))))
-                (else #f))
-              grouped-tags)))
+(def (tag-input input)
+  (let (input (path-normalize input))
+    (if (file-exists? input)
+      (if (file-directory? input)
+        (tag-directory input)
+        (tag-srcfile input))
+      (error "No such file or directory" input))))
 
 (def (lookup-location-regexp pat (ns #f))
   (let* ((tagfile-path (string-append gtagspath ns))
@@ -191,3 +189,33 @@
                   (lookup-location-regexp-input pat
                                                 (path-normalize (string-append dir "/" f))))
                 files)))
+
+
+;; Utils
+
+(def (group-by proc list)
+  (if list
+    (let ((alist '()))
+      (for-each (lambda (e)
+                  (let* ((key (proc e))
+                         (res (assoc key alist)))
+                    (if res
+                      (set-cdr! res (cons e (cdr res)))
+                      (set! alist (cons [key e] alist)))))
+                list)
+      alist)
+    '()))
+
+(def gtagspath (path-normalize "~/.gerbil/tags/"))
+
+(def (id->ns id)
+  (let (r (string-split (symbol->string id) #\#))
+    (if (< 1 (length r))
+      (car (string-split (car r) #\[))
+      "gerbil/core")))
+
+(def (id->key id)
+  (let (r (string-split (symbol->string id) #\#))
+    (if (< 1 (length r))
+      (cadr r)
+      (cadr r))))

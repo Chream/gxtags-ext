@@ -38,9 +38,9 @@ prelude: :<core>
 
 (export #t )
 
-(def (get-tags mod-ctx)
-  (let ((path (gx#module-context-path mod-ctx)))
-    (get-tags-source-file path)))
+;; (def (get-tags mod-ctx)
+;;   (let ((path (gx#module-context-path mod-ctx)))
+;;     (get-tags-source-file path)))
 
 
 (defrules foo ()
@@ -143,51 +143,6 @@ prelude: :<core>
                             (operation-lambda-list binding loc))))
     (list type xns slots phi loc binding-lamlist)))
 
-(def (expander-context-table-all)
-  "Finds all bindings for all phi contexts.
-   Returns `table' of (key . <binding>)."
-  (let lp ((ctx (current-expander-context))
-           (table (make-hash-table))
-           (going-up? #t))
-    (let* ((t (gx#expander-context-table ctx))
-           (table-empty? (hash-empty? t)))
-      (cond ((and table-empty? (not going-up?))
-             table)
-            ((and table-empty? going-up?)
-             ;; Resets to phi=0 and goes down.
-             (lp (gx#core-context-shift (gx#current-expander-context)  1)
-                 table
-                 #f))
-            (going-up?
-             (lp (gx#core-context-shift ctx 1)
-                 (hash-merge! t table)
-                 going-up?))
-            ((not going-up?)
-             (lp (gx#core-context-shift ctx -1)
-                 (hash-merge! t table)
-                 going-up?))
-            (else (error "wtf?"))))))
-
-(def (expander-context-table-phi phi)
-  "Finds all bindings for given PHI context.
-   Returns `table' of (key . <binding>)."
-  (gx#expander-context-table
-   (gx#core-context-shift (gx#current-expander-context) phi)))
-
-(def (expander-context-table-regex pat (phi 0))
-  "This matches PAT for each bound identifier in the
-   current context. Return a `table' of (key . #<import-binding>.)"
-  (def (ensure-string elt)
-    (if (symbol? elt)
-      (symbol->string elt)
-      elt))
-
-  (let ((ctx-table (if (eq? phi all:)
-                     (expander-context-table-all)
-                     (expander-context-table-phi phi))))
-    (hash-filter ctx-table
-                 (lambda (k v)
-                   (pregexp-match (ensure-string pat) (symbol->string k))))))
 
 (def (import-binding-e-rec binding)
   (cond ((gx#import-binding? binding)
