@@ -1,6 +1,7 @@
 (import :std/srfi/1
         :std/format
         :std/misc/rtd
+        :std/misc/repr
         :std/pregexp
         (only-in :std/text/json read-json json-symbolic-keys)
         (only-in :gerbil/gambit/threads thread-join! spawn)
@@ -185,10 +186,10 @@
 
 (define-syntax logg
   (syntax-rules ()
-    ((_ . var)
-     `(begin
-        (display (format "~S is: " ',var))
-        (prn var)))))
+    ((_ var)
+     (begin
+       (display (format "~S == " 'var))
+       (prn var)))))
 
 (def (read-json-equal in)
   (parameterize ((json-symbolic-keys #f))
