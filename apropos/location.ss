@@ -155,18 +155,18 @@
         (put-tag-srcfile input))
       (error "No such file or directory" input))))
 
-(def (lookup-location-regexp pat (ns #f))
+(def (lookup-tag-regexp pat (ns #f))
   (let* ((tagfile-path (string-append gtagspath ns))
          (result (if (and (file-exists? tagfile-path)
                           ns)
-                   (lookup-location-regexp-file pat tagfile-path)
+                   (lookup-tag-regexp-file pat tagfile-path)
                    #f)))
     (if result
-      (lookup-location-regexp-input pat gtagspath)
+      (lookup-tag-regexp-input pat gtagspath)
       result)))
 
-(def (lookup-location-symbol sym (ns #f))
-  (let (matches (lookup-location-regexp
+(def (lookup-tag-symbol sym (ns #f))
+  (let (matches (lookup-tag-regexp
                  (string-append "^"
                                 (symbol->string sym)
                                 "$")
@@ -175,19 +175,19 @@
           ((= (length matches) 1) (cdar matches))
           (else (error "found more than one match." matches)))))
 
-(def (lookup-location-id id)
+(def (lookup-tag-id id)
   (let ((ns (id->ns id))
         (key (id->key id)))
-    (lookup-location-symbol (if (string? key) (string->symbol key) key) ns)))
+    (lookup-tag-symbol (if (string? key) (string->symbol key) key) ns)))
 
-(def (lookup-location-regexp-input pat input (ns #f))
+(def (lookup-tag-regexp-input pat input (ns #f))
   (if (file-exists? input)
     (if (file-directory? input)
-      (lookup-location-regexp-directory pat input ns)
-      (lookup-location-regexp-file pat input ns))
+      (lookup-tag-regexp-directory pat input ns)
+      (lookup-tag-regexp-file pat input ns))
     (error "No such file or directory" input)))
 
-(def (lookup-location-regexp-file pat file (ns #f))
+(def (lookup-tag-regexp-file pat file (ns #f))
   (def (entry-name e)
     (car e))
   (def (entry-value e)
@@ -218,10 +218,10 @@
                        (read-line in)
                        result)))))))))
 
-(def (lookup-location-regexp-directory pat dir (ns #f))
+(def (lookup-tag-regexp-directory pat dir (ns #f))
   (let ((files (sort (directory-files dir) string<?)))
     (append-map (lambda (f)
-                  (lookup-location-regexp-input pat
+                  (lookup-tag-regexp-input pat
                                                 (path-normalize (string-append dir "/" f))))
                 files)))
 
