@@ -60,7 +60,7 @@
     (hash-put! ht "files" (make-hash-table))
     ht))
 
-(def (put-tag-srcfile filename)
+(def (put-tags-srcfile! filename)
 
   (def (put-tag! ht filename key locat)
     (let* ((position (if (locat? locat)
@@ -114,7 +114,7 @@
 
   (put-tags filename (read-tags-srcfile (path-normalize filename))))
 
-(def (put-tag-directory dirname)
+(def (put-tags-directory! dirname)
   (let* ((dirname (path-normalize dirname))
          (files (sort (directory-files dirname) string<?))
         (result '()))
@@ -123,15 +123,15 @@
         (let ((path (path-expand file dirname)))
           (when (or (file-directory? path)
                     (pregexp-match "[^ssxi].ss$" path))
-            (put-tag-input path))))
+            (put-tags! path))))
       files)))
 
-(def (put-tag-input input)
+(def (put-tags! input)
   (let (input (path-normalize input))
     (if (file-exists? input)
       (if (file-directory? input)
-        (put-tag-directory input)
-        (put-tag-srcfile input))
+        (put-tags-directory! input)
+        (put-tags-srcfile! input))
       (error "No such file or directory" input))))
 
 (def (%tag-filter fn jtable)
