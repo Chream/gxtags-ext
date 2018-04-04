@@ -258,18 +258,6 @@
       alist)
     '()))
 
-(def (id->ns id)
-  (let (r (string-split (symbol->string id) #\#))
-    (if (< 1 (length r))
-      (car (string-split (car r) #\[))
-      "gerbil/core")))
-
-(def (id->key id)
-  (let (r (string-split (symbol->string id) #\#))
-    (if (< 1 (length r))
-      (cadr r)
-      (cadr r))))
-
 (def (make-path module)
   (string-append gtagspath
                  (pregexp-replace* "/" module
