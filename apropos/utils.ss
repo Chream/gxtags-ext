@@ -5,7 +5,8 @@
         :std/pregexp
         (only-in :std/text/json read-json json-symbolic-keys)
         (only-in :gerbil/gambit/threads thread-join! spawn)
-        (only-in :clan/utils/hash hash-filter))
+        (only-in :clan/utils/hash hash-filter)
+        (only-in :clan/utils/base nest))
 
 (export #t)
 

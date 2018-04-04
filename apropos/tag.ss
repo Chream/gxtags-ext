@@ -224,27 +224,6 @@
 ;;   from
 ;;   to)
 
-(def (resolve-module-export-root-module xport (ctx (gx#current-expander-context)))
-  "Takes XPORT, a `module-export' and returns
-   the module name, a `string', in which it is defined."
-  (nest
-   (let ((xport-key (gx#module-export-key xport))
-         (ctx-table (expander-context-table-all ctx))))
-   (let lp ((binding (hash-get ctx-table xport-key))))
-   (let (context-id (cond ((gx#import-binding? binding)
-                           (if (not (gx#import-binding?
-                                     (gx#import-binding-e binding)))
-                             (gx#expander-context-id
-                              (gx#import-binding-context binding))
-                             (lp (gx#import-binding-e binding))))
-                          ((gx#module-binding? binding)
-                           (gx#expander-context-id
-                            (gx#module-binding-context binding)))
-                          (else (gx#expander-context-id ctx))))
-     (cond ((symbol? context-id) (symbol->string context-id))
-           ((string? context-id) context-id)
-           (else (error "cant resolve."))))))
-
 (def (group-by proc list)
   (if list
     (let ((alist '()))
