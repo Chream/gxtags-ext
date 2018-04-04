@@ -60,12 +60,6 @@
 
 (def (put-tag-srcfile filename)
 
-  (def (make-path module)
-    (string-append gtagspath
-                   (pregexp-replace* "/" module
-                                     "__")
-                   ".json"))
-
   (def (put-tag! ht filename key locat)
     (let* ((position (if (locat? locat)
                        (filepos-line (locat-position locat))
@@ -138,10 +132,36 @@
         (put-tag-srcfile input))
       (error "No such file or directory" input))))
 
-(def (lookup-tag-regexp pat (ns #f))
-  (let* ((tagfile-path (string-append gtagspath ns))
-         (result (if (and (file-exists? tagfile-path)
-                          ns)
+(def (lookup-tag-regexp-file pat file)
+
+  (def (tag-filter fn jtable)
+    "FN takes FILENAME KEY VALUE PATH"
+    (let (ht (make-hash-table))
+      (hash-for-each
+       (lambda (path tags)
+         (hash-for-each
+          (lambda (key tag-info)
+            (when (fn key tag-info path)
+              (let (attr-table (make-hash-table))
+                (hash-put! attr-table "position"
+                           (get-tag-position tag-info))
+                (hash-put! attr-table "path" path)
+                (hash-put! ht key attr-table))))
+          tags))
+       (hash-get jtable "files"))
+      ht))
+
+  (call-with-input-file file
+    (lambda (in)
+      (let (json (read-json-equal in))
+        (tag-filter (lambda (key . rest)
+                      (pregexp-match pat key))
+                    json)))))
+
+(def (lookup-tag-regexp pat module: (mod #f))
+  (let* ((tagfile-path (make-path mod))
+         (result (if (and mod
+                          (file-exists? tagfile-path))
                    (lookup-tag-regexp-file pat tagfile-path)
                    #f)))
     (if result
@@ -170,37 +190,6 @@
       (lookup-tag-regexp-file pat input ns))
     (error "No such file or directory" input)))
 
-(def (lookup-tag-regexp-file pat file (ns #f))
-  (def (entry-name e)
-    (car e))
-  (def (entry-value e)
-    (cadr e))
-  (call-with-input-file file
-    (lambda (in)
-      (let lp ((current-src-path #f)
-               (current-line (read-line in))
-               (result (list)))
-        (if (eof-object? current-line)
-          (reverse result)
-          (let* ((current-entry (string-split current-line #\,))
-                 (name  (entry-name current-entry))
-                 (value (entry-value current-entry)))
-            (cond ((equal? name "***")
-                   (lp value
-                       (read-line in)
-                       result))
-                  ((pregexp-match pat name)
-                   (lp current-src-path
-                       (read-line in)
-                       (cons (cons name
-                                   (make-locat (path-normalize current-src-path)
-                                               (string->number value)))
-                             result)))
-                  (else
-                   (lp current-src-path
-                       (read-line in)
-                       result)))))))))
-
 (def (lookup-tag-regexp-directory pat dir (ns #f))
   (let ((files (sort (directory-files dir) string<?)))
     (append-map (lambda (f)
@@ -208,8 +197,27 @@
                                                 (path-normalize (string-append dir "/" f))))
                 files)))
 
+;; accessors
+
+(def (get-tag-position tag-info)
+  tag-info)
+
 
 ;; Utils
+
+;; (def (invert-json-branch from to: (to (make-hash-table)))
+;;   (let lp ((ht (make-hash-table)))
+;;     (hash-for-each
+;;      (lambda (cat v)
+;;        (if (hash-table? v)
+;;          (begin
+;;            (invert-json-branch )
+;;            )
+;;          (begin
+;;            (hash-put! ht "value" v)
+;;            (hash-put! to cat ht))))))
+;;   from
+;;   to)
 
 (def (resolve-module-export-root-module xport (ctx (gx#current-expander-context)))
   "Takes XPORT, a `module-export' and returns
@@ -258,3 +266,9 @@
     (if (< 1 (length r))
       (cadr r)
       (cadr r))))
+
+(def (make-path module)
+  (string-append gtagspath
+                 (pregexp-replace* "/" module
+                                   "__")
+                 ".json"))

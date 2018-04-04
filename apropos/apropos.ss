@@ -33,7 +33,7 @@ prelude: :<core>
 
         (except-in :gerbil/tools/gxtags file-directory?)
 
-        "location"
+        "tag"
         "utils")
 
 (export #t )
