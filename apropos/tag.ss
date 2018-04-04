@@ -24,6 +24,8 @@
 
 (export #t)
 
+(def gtagspath (path-normalize "~/.gerbil/tags/"))
+
 (def (read-tags-srcfile filename)
   "Returns a list of tags. Format is:
    '(ID (KEY . ROOT-MODULE) LOCATION).
@@ -132,76 +134,79 @@
         (put-tag-srcfile input))
       (error "No such file or directory" input))))
 
+(def (%tag-filter fn jtable)
+  "FN takes FILENAME KEY VALUE PATH"
+  (let (ht (make-hash-table))
+    (hash-for-each
+     (lambda (path tags)
+       (hash-for-each
+        (lambda (key tag-info)
+          (when (fn key tag-info path)
+            (let (attr-table (make-hash-table))
+              (hash-put! attr-table "position"
+                         (get-tag-position tag-info))
+              (hash-put! attr-table "path" path)
+              (hash-put! ht key attr-table))))
+        tags))
+     (hash-get jtable "files"))
+    ht))
+
 (def (lookup-tag-regexp-file pat file)
-
-  (def (tag-filter fn jtable)
-    "FN takes FILENAME KEY VALUE PATH"
-    (let (ht (make-hash-table))
-      (hash-for-each
-       (lambda (path tags)
-         (hash-for-each
-          (lambda (key tag-info)
-            (when (fn key tag-info path)
-              (let (attr-table (make-hash-table))
-                (hash-put! attr-table "position"
-                           (get-tag-position tag-info))
-                (hash-put! attr-table "path" path)
-                (hash-put! ht key attr-table))))
-          tags))
-       (hash-get jtable "files"))
-      ht))
-
   (call-with-input-file file
     (lambda (in)
       (let (json (read-json-equal in))
-        (tag-filter (lambda (key . rest)
+        (%tag-filter (lambda (key . rest)
                       (pregexp-match pat key))
                     json)))))
 
-(def (lookup-tag-regexp pat module: (mod #f))
-  (let* ((tagfile-path (make-path mod))
-         (result (if (and mod
-                          (file-exists? tagfile-path))
-                   (lookup-tag-regexp-file pat tagfile-path)
-                   #f)))
-    (if result
-      (lookup-tag-regexp-input pat gtagspath)
-      result)))
+(def (lookup-tag-regexp-directory pat dir)
+  (let ((files (sort (directory-files dir) string<?))
+        (ht (make-hash-table)))
+    (append-map
+      (lambda (f)
+        (hash->list
+         (lookup-tag-regexp pat (path-normalize
+                                 (string-append dir
+                                                "/" f)))))
+      files)))
 
-(def (lookup-tag key (ns #f))
-  (let (matches (lookup-tag-regexp
-                 (string-append "^"
-                                (symbol->string key)
-                                "$")
-                 ns))
-    (cond ((null? matches)        #f)
-          ((= (length matches) 1) (cdar matches))
-          (else (error "found more than one match." matches)))))
-
-(def (lookup-tag-id id)
-  (let ((ns (id->ns id))
-        (key (id->key id)))
-    (lookup-tag (if (string? key) (string->symbol key) key) ns)))
-
-(def (lookup-tag-regexp-input pat input (ns #f))
+(def (lookup-tag-regexp pat (input gtagspath))
   (if (file-exists? input)
     (if (file-directory? input)
-      (lookup-tag-regexp-directory pat input ns)
-      (lookup-tag-regexp-file pat input ns))
+      (lookup-tag-regexp-directory pat input)
+      (lookup-tag-regexp-file pat input))
     (error "No such file or directory" input)))
 
-(def (lookup-tag-regexp-directory pat dir (ns #f))
-  (let ((files (sort (directory-files dir) string<?)))
-    (append-map (lambda (f)
-                  (lookup-tag-regexp-input pat
-                                                (path-normalize (string-append dir "/" f))))
-                files)))
+(def (lookup-tag-file key file)
+  (call-with-input-file file
+    (lambda (in)
+      (let (json (read-json-equal in))
+        (%tag-filter (lambda (ckey . rest)
+                       (equal? key ckey))
+                     json)))))
+
+(def (lookup-tag-directory key dir)
+  (let ((files (sort (directory-files dir) string<?))
+        (ht (make-hash-table)))
+    (append-map
+     (lambda (f)
+       (hash->list
+        (lookup-tag key
+                    (path-normalize
+                     (string-append dir "/" f)))))
+     files)))
+
+(def (lookup-tag key (input gtagspath))
+  (if (file-exists? input)
+    (if (file-directory? input)
+      (lookup-tag-directory key input)
+      (lookup-tag-file key input))
+    (error "No such file or directory" input)))
 
 ;; accessors
 
 (def (get-tag-position tag-info)
   tag-info)
-
 
 ;; Utils
 
@@ -252,8 +257,6 @@
                 list)
       alist)
     '()))
-
-(def gtagspath (path-normalize "~/.gerbil/tags/"))
 
 (def (id->ns id)
   (let (r (string-split (symbol->string id) #\#))
