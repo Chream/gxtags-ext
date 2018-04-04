@@ -160,15 +160,16 @@
                     json)))))
 
 (def (lookup-tag-regexp-directory pat dir)
-  (let ((files (sort (directory-files dir) string<?))
-        (ht (make-hash-table)))
-    (append-map
+  (let ((files (sort (directory-files dir) string<?)))
+    (list->hash-table
+     (append-map
       (lambda (f)
         (hash->list
          (lookup-tag-regexp pat (path-normalize
                                  (string-append dir
-                                                "/" f)))))
-      files)))
+                                                "/"
+                                                f)))))
+      files))))
 
 (def (lookup-tag-regexp pat (input gtagspath))
   (if (file-exists? input)
@@ -186,15 +187,15 @@
                      json)))))
 
 (def (lookup-tag-directory key dir)
-  (let ((files (sort (directory-files dir) string<?))
-        (ht (make-hash-table)))
-    (append-map
-     (lambda (f)
-       (hash->list
-        (lookup-tag key
-                    (path-normalize
-                     (string-append dir "/" f)))))
-     files)))
+  (let ((files (sort (directory-files dir) string<?)))
+    (list->hash-table
+     (append-map
+      (lambda (f)
+        (hash->list
+         (lookup-tag key
+                     (path-normalize
+                      (string-append dir "/" f)))))
+      files))))
 
 (def (lookup-tag key (input gtagspath))
   (if (file-exists? input)
