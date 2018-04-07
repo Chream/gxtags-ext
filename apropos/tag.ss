@@ -20,6 +20,7 @@
         (only-in :clan/utils/files clobber-file maybe-replace-file)
         (only-in :clan/utils/base if-let nest)
         (only-in :clan/utils/hash hash-ensure-ref)
+        (only-in :clan/utils/json pretty-print-json)
         "utils")
 
 (export #t)
@@ -60,7 +61,7 @@
     (hash-put! ht "files" (make-hash-table))
     ht))
 
-(def (put-tags-srcfile! filename)
+(def (tags-put-srcfile! filename)
 
   (def (put-tag! ht filename key locat)
     (let* ((position (if (locat? locat)
@@ -87,7 +88,7 @@
               (error "whyy.")))
            (lp rest))))))
 
-  (def (put-tags filename tags)
+  (def (tags-put filename tags)
   "Takes a `list' of tags, each entry of the form:
    '(ID (KEY . ROOT-MODULE) LOCAT)."
 
@@ -112,9 +113,9 @@
                     (force-output out))))))))
               tags-by-module)))
 
-  (put-tags filename (read-tags-srcfile (path-normalize filename))))
+  (tags-put filename (read-tags-srcfile (path-normalize filename))))
 
-(def (put-tags-directory! dirname)
+(def (tags-put-directory! dirname)
   (let* ((dirname (path-normalize dirname))
          (files (sort (directory-files dirname) string<?))
         (result '()))
@@ -123,19 +124,22 @@
         (let ((path (path-expand file dirname)))
           (when (or (file-directory? path)
                     (pregexp-match "[^ssxi].ss$" path))
-            (put-tags! path))))
+            (tags-put! path))))
       files)))
 
-(def (put-tags! input)
+(def (tags-put! input)
   (let (input (path-normalize input))
     (if (file-exists? input)
       (if (file-directory? input)
-        (put-tags-directory! input)
-        (put-tags-srcfile! input))
+        (tags-put-directory! input)
+        (tags-put-srcfile! input))
       (error "No such file or directory" input))))
 
 (def (%tag-filter fn jtable)
-  "FN takes FILENAME KEY VALUE PATH"
+  "FN takes FILENAME KEY VALUE PATH.
+   NOTE This function is important as it depends on the
+   format of the tags. If it is changed this procedure
+   needs rewriting."
   (let (ht (make-hash-table))
     (hash-for-each
      (lambda (path tags)
@@ -144,69 +148,96 @@
           (when (fn key tag-info path)
             (let (attr-table (make-hash-table))
               (hash-put! attr-table "position"
-                         (get-tag-position tag-info))
+                         (tag-position tag-info))
               (hash-put! attr-table "path" path)
               (hash-put! ht key attr-table))))
         tags))
      (hash-get jtable "files"))
     ht))
 
-(def (lookup-tag-regexp-file pat file)
-  (call-with-input-file file
-    (lambda (in)
-      (let (json (read-json-equal in))
-        (%tag-filter (lambda (key . rest)
-                      (pregexp-match pat key))
-                    json)))))
-
-(def (lookup-tag-regexp-directory pat dir)
-  (let ((files (sort (directory-files dir) string<?)))
-    (list->hash-table
-     (append-map
-      (lambda (f)
-        (hash->list
-         (lookup-tag-regexp pat (path-normalize
-                                 (string-append dir
-                                                "/"
-                                                f)))))
-      files))))
-
-(def (lookup-tag-regexp pat (input gtagspath))
-  (if (file-exists? input)
-    (if (file-directory? input)
-      (lookup-tag-regexp-directory pat input)
-      (lookup-tag-regexp-file pat input))
-    (error "No such file or directory" input)))
-
-(def (lookup-tag-file key file)
+(def (tag-search-file key file)
   (call-with-input-file file
     (lambda (in)
       (let (json (read-json-equal in))
         (%tag-filter (lambda (ckey . rest)
-                       (equal? key ckey))
+                       (string-contains ckey key))
                      json)))))
 
-(def (lookup-tag-directory key dir)
+(def (tag-search-directory key dir)
   (let ((files (sort (directory-files dir) string<?)))
     (list->hash-table
      (append-map
       (lambda (f)
         (hash->list
-         (lookup-tag key
+         (tag-search key
                      (path-normalize
                       (string-append dir "/" f)))))
       files))))
 
-(def (lookup-tag key (input gtagspath))
+(def (tag-search key (input gtagspath))
   (if (file-exists? input)
     (if (file-directory? input)
-      (lookup-tag-directory key input)
-      (lookup-tag-file key input))
+      (tag-search-directory key input)
+      (tag-search-file key input))
+    (error "No such file or directory" input)))
+
+(def (tags-search-regexp-file pat file)
+  (call-with-input-file file
+    (lambda (in)
+      (let (json (read-json-equal in))
+        (%tag-filter (lambda (key . rest)
+                       (pregexp-match pat key))
+                     json)))))
+
+(def (tags-search-regexp-directory pat dir)
+  (let ((files (sort (directory-files dir) string<?)))
+    (list->hash-table
+     (append-map
+      (lambda (f)
+        (hash->list
+         (tags-search-regexp pat
+                            tags-dir: (path-normalize
+                                       (string-append dir
+                                                      "/"
+                                                      f)))))
+      files))))
+
+(def (tags-search-regexp pat tags-dir: (tags-dir gtagspath))
+  (if (file-exists? tags-dir)
+    (if (file-directory? tags-dir)
+      (tags-search-regexp-directory pat tags-dir)
+      (tags-search-regexp-file pat tags-dir))
+    (error "No such file or directory" tags-dir)))
+
+(def (tag-lookup-file key file)
+  (call-with-input-file file
+    (lambda (in)
+      (let (json (read-json-equal in))
+        (%tag-filter (lambda (ckey . rest)
+                       (equal? ckey key))
+                     json)))))
+
+(def (tag-lookup-directory key dir)
+  (let ((files (sort (directory-files dir) string<?)))
+    (list->hash-table
+     (append-map
+      (lambda (f)
+        (hash->list
+         (tag-lookup key
+                     (path-normalize
+                      (string-append dir "/" f)))))
+      files))))
+
+(def (tag-lookup key (input gtagspath))
+  (if (file-exists? input)
+    (if (file-directory? input)
+      (tag-lookup-directory key input)
+      (tag-lookup-file key input))
     (error "No such file or directory" input)))
 
 ;; accessors
 
-(def (get-tag-position tag-info)
+(def (tag-position tag-info)
   tag-info)
 
 ;; Utils
@@ -243,3 +274,6 @@
                  (pregexp-replace* "/" module
                                    "__")
                  ".json"))
+
+(def (pp json)
+  (pretty-print-json json))
