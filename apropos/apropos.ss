@@ -31,8 +31,7 @@ prelude: :<core>
 
         :std/parser
 
-        (except-in :gerbil/tools/gxtags file-directory?)
-
+        "gxtags-ext"
         "tag"
         "utils")
 
@@ -120,7 +119,7 @@ prelude: :<core>
 (def (binding-location binding (xns #f))
   "Returns `locat', the source location of the given BINDING."
   (if (gx#binding? binding)
-    (lookup-location-id (gx#binding-id binding))
+    (tag-lookup (symbol->string (gx#binding-id binding)))
     (error "Not a binding." binding)))
 
 (def (operation-lambda-list binding loc)

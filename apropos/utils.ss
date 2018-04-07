@@ -6,7 +6,9 @@
         (only-in :std/text/json read-json json-symbolic-keys)
         (only-in :gerbil/gambit/threads thread-join! spawn)
         (only-in :clan/utils/hash hash-filter)
-        (only-in :clan/utils/base nest))
+        (only-in :clan/utils/base nest)
+        (only-in :clan/utils/json pretty-print-json))
+
 
 (export #t)
 
@@ -217,9 +219,14 @@
        (display (format "~S == " 'var))
        (prn var)))))
 
+;; json
+
 (def (read-json-equal in)
   (parameterize ((json-symbolic-keys #f))
     (read-json in)))
+
+(def (pp json)
+  (pretty-print-json json))
 
 
 
