@@ -83,7 +83,7 @@
 (def tags-path
   (make-parameter (path-normalize "~/.gerbil/tags/tags.json")))
 (def current-tags-table
-  (make-parameter #f))
+  (make-parameter (make-hash-table)))
 
 (def (read-tags-srcfile filename)
   "Returns a list of tags. Format is:
@@ -118,9 +118,10 @@
                          (cut hash-ensure-ref <> module make-hash-table)
                          (cut hash-ensure-ref <> "locations" make-hash-table)
                          (cut hash-ensure-ref <> path make-hash-table))))
-    (hash-put! file-table key (if (locat? locat)
-                                (filepos-line (locat-position locat))
-                                locat))))
+    (hash-put! file-table (symbol->string key)
+               (if (locat? locat)
+                 (filepos-line (locat-position locat))
+                 locat))))
 
 (def (tag-srcfile srcfile into: (ht (make-hash-table)))
   (let* ((srcfile (path-normalize srcfile))
@@ -156,137 +157,49 @@
       (error "No such file or directory" input)))
   ht)
 
-(def (%tag-filter fn jtable)
-  "FN takes FILENAME KEY VALUE PATH.
-   NOTE This function is important as it depends on the
+(def (%tag-filter fn jtable into: (ht (make-hash-table)))
+  "NOTE: This function is important as it depends on the
    format of the tags. If it is changed this procedure
-   needs rewriting."
-  (let (ht (make-hash-table))
-    (hash-for-each
-     (lambda (path tags)
-       (hash-for-each
-        (lambda (key tag-info)
-          (when (fn key tag-info path)
-            (let (attr-table (make-hash-table))
-              (hash-put! attr-table "position"
-                         (tag-position tag-info))
-              (hash-put! attr-table "path" path)
-              (hash-put! ht key attr-table))))
-        tags))
-     (hash-get jtable "files"))
-    ht))
+   might need rewriting."
+  (hash-for-each
+   (lambda (module mod-attr-ht)
+     (hash-for-each
+      (lambda (path tags)
+        (hash-for-each
+         (lambda (key locat)
+           (when (fn key module path locat)
+             (let (attr-table (make-hash-table))
+               (hash-put! attr-table "position"
+                          (tag-position locat))
+               (hash-put! attr-table "path" path)
+               (hash-put! ht key attr-table))))
+         tags))
+      (hash-get mod-attr-ht "locations")))
+   jtable)
+  ht)
 
-(def (tag-search-file key file)
-  (call-with-input-file file
-    (lambda (in)
-      (let (json (read-json-equal in))
-        (%tag-filter (lambda (ckey . rest)
-                       (string-contains ckey key))
-                     json)))))
+(def (tag-lookup key (ht (current-tags-table)))
+  (%tag-filter (lambda (ckey . rest)
+                 (equal? ckey key))
+               ht))
 
-;; (def (tag-search-directory key dir)
-;;   (let ((files (sort (directory-files dir) string<?)))
-;;     (list->hash-table
-;;      (append-map
-;;       (lambda (f)
-;;         (hash->list
-;;          (tag-search key
-;;                      (path-normalize
-;;                       (string-append dir "/" f)))))
-;;       files))))
+(def (tag-search key (ht (current-tags-table)))
+  (%tag-filter (lambda (ckey . rest)
+                 (string-contains ckey key))
+               ht))
 
-;; (def (tag-search key (input gtagspath))
-;;   (if (file-exists? input)
-;;     (if (file-directory? input)
-;;       (tag-search-directory key input)
-;;       (tag-search-file key input))
-;;     (error "No such file or directory" input)))
+(def (tag-search-regexp pat (ht (current-tags-table)))
+  (%tag-filter (lambda (key . rest)
+                 (pregexp-match pat key))
+               ht))
 
-;; (def (tags-search-regexp-file pat file)
-;;   (call-with-input-file file
-;;     (lambda (in)
-;;       (let (json (read-json-equal in))
-;;         (%tag-filter (lambda (key . rest)
-;;                        (pregexp-match pat key))
-;;                      json)))))
+(def (write-tags-table output (ht (current-tags-table)))
+  (write-json ht output))
 
-;; (def (tags-search-regexp-directory pat dir)
-;;   (let ((files (sort (directory-files dir) string<?)))
-;;     (list->hash-table
-;;      (append-map
-;;       (lambda (f)
-;;         (hash->list
-;;          (tags-search-regexp pat
-;;                             tags-dir: (path-normalize
-;;                                        (string-append dir
-;;                                                       "/"
-;;                                                       f)))))
-;;       files))))
+(def (read-tags-table input)
+  (read-json-equal input))
 
-;; (def (tags-search-regexp pat tags-dir: (tags-dir gtagspath))
-;;   (if (file-exists? tags-dir)
-;;     (if (file-directory? tags-dir)
-;;       (tags-search-regexp-directory pat tags-dir)
-;;       (tags-search-regexp-file pat tags-dir))
-;;     (error "No such file or directory" tags-dir)))
+;; accessors
 
-;; (def (tag-lookup-file key file)
-;;   (call-with-input-file file
-;;     (lambda (in)
-;;       (let (json (read-json-equal in))
-;;         (%tag-filter (lambda (ckey . rest)
-;;                        (equal? ckey key))
-;;                      json)))))
-
-;; (def (tag-lookup-directory key dir)
-;;   (let ((files (sort (directory-files dir) string<?)))
-;;     (list->hash-table
-;;      (append-map
-;;       (lambda (f)
-;;         (hash->list
-;;          (tag-lookup key
-;;                      (path-normalize
-;;                       (string-append dir "/" f)))))
-;;       files))))
-
-;; (def (tag-lookup key (input gtagspath))
-;;   (if (file-exists? input)
-;;     (if (file-directory? input)
-;;       (tag-lookup-directory key input)
-;;       (tag-lookup-file key input))
-;;     (error "No such file or directory" input)))
-
-;; ;; accessors
-
-;; (def (tag-position tag-info)
-;;   tag-info)
-
-;; Utils
-
-(def (group-by proc list)
-  (if list
-    (let ((alist '()))
-      (for-each (lambda (e)
-                  (let* ((key (proc e))
-                         (res (assoc key alist)))
-                    (if res
-                      (set-cdr! res (cons e (cdr res)))
-                      (set! alist (cons [key e] alist)))))
-                list)
-      alist)
-    '()))
-
-
-;; ;; (def (invert-json-branch from to: (to (make-hash-table)))
-;; ;;   (let lp ((ht (make-hash-table)))
-;; ;;     (hash-for-each
-;; ;;      (lambda (cat v)
-;; ;;        (if (hash-table? v)
-;; ;;          (begin
-;; ;;            (invert-json-branch )
-;; ;;            )
-;; ;;          (begin
-;; ;;            (hash-put! ht "value" v)
-;; ;;            (hash-put! to cat ht))))))
-;; ;;   from
-;; ;;   to)
+(def (tag-position tag-info)
+  tag-info)
