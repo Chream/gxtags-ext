@@ -8,7 +8,7 @@
         (only-in :std/text/json read-json json-symbolic-keys string->json-object json-object->string)
         (only-in :gerbil/gambit/threads thread-join! spawn)
         (only-in :clan/utils/hash hash-filter)
-        (only-in :clan/utils/base nest)
+        (only-in :clan/utils/base nest if-let)
         (only-in :clan/utils/json pretty-print-json))
 
 (export #t)
@@ -283,7 +283,6 @@
 
 (def (json-input-fn-generator get-fn set-fn! force-set-fn! constructor-fn)
   (lambda (table . entry-spec)
-    (logg entry-spec)
     (let lp! ((table-1 table)
               (entry-spec-1 entry-spec))
       (cond ((null? entry-spec-1)
@@ -368,6 +367,24 @@
                (if (hash-table? entry)
                  (lp! entry (cdr entry-spec-1))
                  (error "json-append!: key not present!" (car entry-spec-1)))))))))
+
+(def (json-make-ref! ht key val)
+
+  (def (make-new-ref! refs val)
+    (let (new-ref (fx1+ (hash-length refs)))
+      (json-add! refs val new-ref)
+      new-ref))
+
+  (def (make-refs! ht key)
+    (json-add! ht key (make-hash-table)))
+
+  (if-let (refs (json-get ht key))
+          (if-let (ref (json-get refs val))
+                  ref
+                  (make-new-ref! refs val))
+          (begin
+            (make-refs! ht key)
+            (json-make-ref! ht key val))))
 
 (defalias make-ht make-hash-table)
 
