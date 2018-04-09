@@ -8,7 +8,7 @@
         (only-in :std/text/json read-json json-symbolic-keys string->json-object json-object->string)
         (only-in :gerbil/gambit/threads thread-join! spawn)
         (only-in :clan/utils/hash hash-filter)
-        (only-in :clan/utils/base nest if-let)
+        (only-in :clan/utils/base nest if-let when-let)
         (only-in :clan/utils/json pretty-print-json))
 
 (export #t)
@@ -275,6 +275,11 @@
   (parameterize ((json-symbolic-keys #f))
     (read-json in)))
 
+(def (read-json-equal-file file)
+  (call-with-input-file file
+    (lambda (in)
+      (read-json-equal in))))
+
 (def (copy-json obj)
   (string->json-object (json-object->string obj)))
 
@@ -368,25 +373,44 @@
                  (lp! entry (cdr entry-spec-1))
                  (error "json-append!: key not present!" (car entry-spec-1)))))))))
 
-(def (json-make-ref! ht key val)
+(def (json-make-ref! ht ref-cat val)
+
   (def (make-new-ref! refs val)
-    (let (new-ref (fx1+ (hash-length refs)))
+    (let (new-ref (number->string (fx1+ (hash-length refs))))
       (json-add! refs new-ref val)
       new-ref))
 
-  (def (make-refs! ht key)
-    (json-add! ht key (make-hash-table)))
+  (def (make-refs! ht ref-cat)
+    (json-add! ht ref-cat (make-hash-table)))
 
-  (if-let (refs (json-get ht key))
-          (if-let (ref (json-get refs val))
-                  ref
-                  (make-new-ref! refs val))
+  (if-let (refs (json-get ht ref-cat))
           (begin
-            (make-refs! ht key)
-            (json-make-ref! ht key val))))
+            (if-let (ref (call/cc
+                           (lambda (ret)
+                             (hash-for-each
+                              (lambda (k v)
+                                (when (equal? v val)
+                                  (ret k)))
+                              refs)
+                             (ret #f))))
+                    ref
+                    (make-new-ref! refs val)))
+          (begin
+            (make-refs! ht ref-cat)
+            (json-make-ref! ht ref-cat val))))
 
 (def (json-ref-lookup ht key ref)
   (json-get ht key ref))
+
+(def (json-refs-expand! ht obj)
+  (call/cc
+    (lambda (ret)
+      (hash-for-each
+       (lambda (k v)
+         (when-let (ref-val (json-get ht k v))
+                   (json-put! obj k ref-val)
+                   (ret ref-val)))
+       obj))))
 
 (defalias make-ht make-hash-table)
 

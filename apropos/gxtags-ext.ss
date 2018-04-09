@@ -26,6 +26,8 @@
         (only-in :clan/utils/hash hash-ensure-ref)
         (only-in :clan/utils/files maybe-replace-file)
 
+        :std/actor
+
         "utils"
         "binding-utils")
 
@@ -72,30 +74,13 @@
          inputs))
 
   (_gx#load-expander!)
-  (make-tags (expand-input-paths tagfile inputs) tagfile append?))
+  ;; (make-tags (expand-input-paths tagfile inputs) tagfile append?)
+  )
 
 (def tags-path
   (make-parameter (path-normalize "~/.gerbil/tags/tags.json")))
 (def current-tags-table
   (make-parameter (make-hash-table)))
-
-(def (make-tags inputs)
-  (let ((tags (make-hash-table)))
-    (for-each (cut tag-input <> into: tags) inputs)
-    (maybe-replace-file tags-path
-                        (lambda (json)
-                          (table-merge! (copy-json json)
-                                        tags))
-                        reader: read-json-equal
-                        writer: write-json)))
-
-(def (make-counter init)
-  (lambda ()
-    (set! init (fx1+ init))
-    init))
-
-(def paths-counter (make-counter 0))
-(def module-counter (make-counter 0))
 
 (def (module-tags ctx xtab into: (ht (make-hash-table)))
 
@@ -115,11 +100,11 @@
   (def (tag! module eid name)
     (let* ((path (locat-path loc))
            (position (filepos-line (locat-position loc))))
-      (let ((tag (make-hash-table)))
+      (let ((tag (make-hash-table size: 4)))
         (json-add! tag "key" (symbol->string name))
-        (json-add! tag "path" path)
-        (json-add! tag "module"  module)
-        (json-add! tag "position" position)
+        (json-add! tag "path" (json-make-ref! ht "path" path))
+        (json-add! tag "mod" (json-make-ref! ht "mod" module))
+        (json-add! tag "pos" position)
         (json-append! ht "tags" [tag]))))
 
   (def (tag-e stx)
@@ -228,43 +213,89 @@
       (error "No such file or directory" input)))
   ht)
 
-(def (tag-lookup key (ctx (current-tags-table)))
+(def (tag-lookup key (table (current-tags-table)))
   (let (r (filter-map
            (lambda (tag)
              (let ((ckey (json-get tag "key")))
                (if (equal? ckey key)
-                 tag
+                 (begin (json-refs-expand! table tag)
+                        tag)
                  #f)))
-           (json-get ctx "tags")))
+           (json-get table "tags")))
     (if (= 1 (length r))
       (car r)
       (error "tag-lookup: got multiple results! " r))))
 
-(def (tag-search key (ctx (current-tags-table)))
+(def (tag-search key (table (current-tags-table)))
   (filter-map (lambda (tag)
                 (let ((ckey (json-get tag "key")))
                   (if (string-contains ckey key)
-                    tag
+                    (begin (json-refs-expand! table tag)
+                           tag)
                     #f)))
-              (json-get ctx "tags")))
+              (json-get table "tags")))
 
-(def (tag-search-regexp pat (ctx (current-tags-table)))
+(def (tag-search-regexp pat (table (current-tags-table)))
   (filter-map (lambda (tag)
                 (let ((ckey (json-get tag "key")))
                   (if (pregexp-match pat ckey)
-                    tag
+                    (begin (json-refs-expand! table tag)
+                           tag)
                     #f)))
-              (json-get ctx "tags")))
+              (json-get table "tags")))
 
-(def (tag-table-write file (ht (current-tags-table)) append?: (append? #f))
-  (maybe-replace-file file
+(def (tag-table-write! file (ht (current-tags-table)) merge?: (merge? #f))
+  (maybe-replace-file (path-normalize file)
                       (lambda (json)
-                        (if append?
+                        (if merge?
+                          ;; TODO use/write json-merge!
                           (begin (hash-merge! ht json)
                                  ht)
                           ht))
                       reader: read-json-equal
                       writer: write-json))
+
+(defproto tags
+  id: tags
+  event:
+  (add-input input)
+  (fill)
+  call:
+  (lookup input)
+  (search input)
+  (search-regexp input))
+
+(def (my-tags)
+  (let ((all-inputs [])
+        (tags-table #f))
+    (let lp ()
+      (<- ((!tags.add-input input)
+           (tag-table-write! (tags-path) (tag-input input) merge?: #t)
+           (set! all-inputs [input all-inputs])
+           (lp))
+          ((!tags.fill)
+           (set! tags-table (read-json-equal-file (tags-path)))
+           (lp))
+          ((!tags.lookup input k)
+           (parameterize ((current-tags-table
+                           (or tags-table
+                               (read-json-equal-file (tags-path)))))
+             (!!value (tag-lookup input) k))
+           (lp))
+          ((!tags.search input k)
+           (parameterize ((current-tags-table
+                           (or tags-table
+                               (read-json-equal-file (tags-path)))))
+             (!!value (tag-search input) k)
+             (lp)))
+          ((!tags.search-regexp input k)
+           (parameterize ((current-tags-table
+                           (or tags-table
+                               (read-json-equal-file (tags-path)))))
+             (!!value (tag-search-regexp input) k)
+             (lp)))))))
+
+(def tags-act (spawn my-tags))
 
 ;; accessors
 
