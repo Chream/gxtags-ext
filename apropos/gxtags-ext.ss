@@ -7,6 +7,7 @@
 (import :gerbil/expander
         (only-in :gerbil/compiler/base ast-case)
         (only-in <syntax-case> syntax)
+        (only-in :std/srfi/1 append-map)
         :gerbil/gambit
         :std/getopt
         :std/sugar
@@ -115,9 +116,9 @@
     (let* ((path (locat-path loc))
            (position (filepos-line (locat-position loc))))
       (let ((tag (make-hash-table)))
-        (json-add! tag "id" name)
+        (json-add! tag "key" (symbol->string name))
         (json-add! tag "path" path)
-        (json-add! tag "module" module)
+        (json-add! tag "module"  module)
         (json-add! tag "position" position)
         (json-append! ht "tags" [tag]))))
 
@@ -227,44 +228,33 @@
       (error "No such file or directory" input)))
   ht)
 
-(def (%tag-filter fn jtable into: (ht (make-hash-table)))
-  "NOTE: This function is important as it depends on the
-   format of the tags. If it is changed this procedure
-   might need rewriting."
-  (hash-for-each
-   (lambda (module mod-attr-ht)
-     (hash-for-each
-      (lambda (path tags)
-        (hash-for-each
-         (lambda (key locat)
-           (when (fn key module path locat)
-             (let (attr-table (make-hash-table))
-               (hash-put! attr-table "position"
-                          (tag-position locat))
-               (hash-put! attr-table "path" path)
-               (hash-put! ht key attr-table))))
-         tags))
-      (hash-get mod-attr-ht "positions")))
-   jtable)
-  ht)
+(def (tag-lookup key (ctx (current-tags-table)))
+  (let (r (filter-map
+           (lambda (tag)
+             (let ((ckey (json-get tag "key")))
+               (if (equal? ckey key)
+                 tag
+                 #f)))
+           (json-get ctx "tags")))
+    (if (= 1 (length r))
+      (car r)
+      (error "tag-lookup: got multiple results! " r))))
 
-(def (tag-lookup key (ht (current-tags-table)))
-  (let (r (%tag-filter (lambda (ckey . rest)
-                         (equal? ckey key))
-                       ht))
-    (if (hash-single? r)
-      (hash-first-value r)
-      (error "tag lookup returned multiple values:" r))))
+(def (tag-search key (ctx (current-tags-table)))
+  (filter-map (lambda (tag)
+                (let ((ckey (json-get tag "key")))
+                  (if (string-contains ckey key)
+                    tag
+                    #f)))
+              (json-get ctx "tags")))
 
-(def (tag-search key (ht (current-tags-table)))
-  (%tag-filter (lambda (ckey . rest)
-                 (string-contains ckey key))
-               ht))
-
-(def (tag-search-regexp pat (ht (current-tags-table)))
-  (%tag-filter (lambda (key . rest)
-                 (pregexp-match pat key))
-               ht))
+(def (tag-search-regexp pat (ctx (current-tags-table)))
+  (filter-map (lambda (tag)
+                (let ((ckey (json-get tag "key")))
+                  (if (pregexp-match pat ckey)
+                    tag
+                    #f)))
+              (json-get ctx "tags")))
 
 (def (tag-table-write file (ht (current-tags-table)) append?: (append? #f))
   (maybe-replace-file file

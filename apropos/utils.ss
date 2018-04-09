@@ -369,10 +369,9 @@
                  (error "json-append!: key not present!" (car entry-spec-1)))))))))
 
 (def (json-make-ref! ht key val)
-
   (def (make-new-ref! refs val)
     (let (new-ref (fx1+ (hash-length refs)))
-      (json-add! refs val new-ref)
+      (json-add! refs new-ref val)
       new-ref))
 
   (def (make-refs! ht key)
@@ -385,6 +384,9 @@
           (begin
             (make-refs! ht key)
             (json-make-ref! ht key val))))
+
+(def (json-ref-lookup ht key ref)
+  (json-get ht key ref))
 
 (defalias make-ht make-hash-table)
 
