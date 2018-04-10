@@ -28,8 +28,8 @@
 
         :std/actor
 
-        "utils"
-        "binding-utils")
+        :chream/utils/text/json
+        (only-in :chream/utils/misc/debug logg))
 
 (export #t)
 
