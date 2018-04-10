@@ -12,7 +12,6 @@
         :std/getopt
         :std/sugar
         :std/sort
-        :std/format
         :std/text/utf8
         :std/text/json
         :std/misc/ports
@@ -74,7 +73,8 @@
          inputs))
 
   (_gx#load-expander!)
-  ;; (make-tags (expand-input-paths tagfile inputs) tagfile append?)
+  ;; (for-each (cut !!tags.tag-input <> input) inputs)
+  ;; (!!tags.)
   )
 
 (def tags-path
@@ -248,54 +248,129 @@
   (maybe-replace-file (path-normalize file)
                       (lambda (json)
                         (if merge?
-                          ;; TODO use/write json-merge!
-                          (begin (hash-merge! ht json)
+                          (begin (json-merge! ht json)
                                  ht)
                           ht))
                       reader: read-json-equal
                       writer: write-json))
 
-(defproto tags
-  id: tags
+
+(defproto tag-worker
+  id: tag-worker
   event:
-  (add-input input)
-  (fill)
+  (update-tag-file tags)
+  (stop)
   call:
-  (lookup input)
-  (search input)
-  (search-regexp input))
+  (file)
+  (read-tag-file path))
 
-(def (my-tags)
-  (let ((all-inputs [])
-        (tags-table #f))
+(def (worker file)
+  (let (file (path-normalize file))
+    (unless (file-exists? file)
+      (call-with-output-file file
+        (lambda (out)
+          (write-json (make-json) out))))
     (let lp ()
-      (<- ((!tags.add-input input)
-           (tag-table-write! (tags-path) (tag-input input) merge?: #t)
-           (set! all-inputs [input all-inputs])
+      (<- ((!tag-worker.read-tag-file k)
+           (!!value (read-json-equal-file file) k)
            (lp))
-          ((!tags.fill)
-           (set! tags-table (read-json-equal-file (tags-path)))
-           (lp))
-          ((!tags.lookup input k)
-           (parameterize ((current-tags-table
-                           (or tags-table
-                               (read-json-equal-file (tags-path)))))
-             (!!value (tag-lookup input) k))
-           (lp))
-          ((!tags.search input k)
-           (parameterize ((current-tags-table
-                           (or tags-table
-                               (read-json-equal-file (tags-path)))))
-             (!!value (tag-search input) k)
-             (lp)))
-          ((!tags.search-regexp input k)
-           (parameterize ((current-tags-table
-                           (or tags-table
-                               (read-json-equal-file (tags-path)))))
-             (!!value (tag-search-regexp input) k)
-             (lp)))))))
 
-(def tags-act (spawn my-tags))
+          ((!tag-worker.file k)
+           (!!value file k))
+
+          ((!tag-worker.update-tag-file tags merge?)
+           (maybe-replace-file file
+                               (lambda (json)
+                                 (if merge?
+                                   (let (njson (json-merge! json tags))
+                                     njson)
+                                   tags))
+                               reader: read-json-equal
+                               writer: write-json)
+           (lp))
+
+          ((!tag-worker.stop)
+           (displayln "stopped thread: " (current-thread))
+           (void))))))
+
+
+
+;; (defproto tags
+;;   id: tags
+;;   event:
+;;   (index-add tag-file)
+;;   (inputs-add inputs tagfile)
+;;   call:
+;;   (lookup input)
+;;   (search input)
+;;   (search-regexp input))
+
+
+
+;; (def (my-tags index-file (tags-table #f))
+
+;;   (def (lookup-for lookup-fn file-actor)
+;;     (parameterize ((current-tags-table (!tag-worker.read-tag-file actor)))
+;;       (lookup-fn key (current-tags-table))))
+
+;;   (def (write-lines lines out)
+;;     (for-each (lambda (line)
+;;                 (write-string line out)
+;;                 (newline out))
+;;               files))
+
+;;   (def (find-worker file actors)
+;;     (let lp (actors-1 actors)
+;;       (if (null? actors-1) #f
+;;           (let ((cact (cat actors-1))
+;;                 (ract (cdr actors-1)))
+;;             (if (equal? file (!tag-worker.file cact))
+;;               cact
+;;               (lp ract))))))
+
+;;   (let* ((tag-files (read-file-lines index-file))
+;;          (workers (map (lambda (file) (spawn (cut worker file))) tag-files))
+;;          (tags-table #f))
+
+;;     (let lp ()
+;;       (<- ((!tags.index-add tagfile)
+;;            (maybe-replace-file
+;;             tagfile
+;;             (lambda (files)
+;;               (if (member tagfile files)
+;;                 files
+;;                 (begin
+;;                   (set! workers (cons (spawn (cut worker tagfile)) workers))
+;;                   (set! tag-files [input tag-files])
+;;                   (cons tagfile files))))
+;;             reader: read-file-lines
+;;             writer: write-lines)
+;;            (lp))
+
+;;           ((!tags.tag-input inputs tagfile merge?)
+;;            (let (tags (make-json))
+;;              (for-each (cut tag-input input into: tags) inputs)
+;;              (if (and merge? (member tagfile tag-files))
+;;                (let ((act (find-actor tagfile actors)))
+;;                  (!tag-worker.update-tag-file act tags)
+;;                  )))
+;;            (lp))
+
+;;           ;; lookup
+
+;;           ((!tags.lookup key k)
+;;            (let ((r (append-map (cut lookup-for tag-lookup <>) workers)))
+;;              (!!value r k)))
+;;            (lp))
+
+;;           ((!tags.search key k)
+;;            (let ((r (append-map (cut lookup-for tag-search <>) workers)))
+;;              (!!value r k))
+;;            (lp))
+;;           ((!tags.search-regexp key k)
+;;            (let ((r (append-map (cut lookup-for tag-search-regexp <>) workers)))
+;;              (!!value r k))
+;;            (lp)))))
 
 ;; accessors
 
