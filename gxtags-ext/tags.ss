@@ -45,20 +45,23 @@
         :chream/utils/misc/repr
         )
 
-(export run)
+(export #t)
 
-(def current-index-file
-  (make-parameter #f))
+(def test-input  (path-normalize "~/repos/gerbil/gxtags-ext"))
+(def test-tagfile  (path-normalize "~/.gerbil/tags/TAGS"))
+(def test-index  (path-normalize "~/.gerbil/tags/index"))
 
-(def (run inputs tagfile append?)
+(def (run inputs tagfile)
   (def (expand-input-paths base inputs)
     (map (cut path-expand <> (path-directory base))
          inputs))
 
   (_gx#load-expander!)
-  (let (tags-index (spawn tags-index (path-normalize "~/.gerbil/tags/index")))
-    (logg tags-index)
-    (for-each (cut !!tag-table.insert! tags-index <> tagfile) inputs)))
+  (logg inputs)
+  (logg tagfile)
+  (let ((tagfile (path-normalize tagfile))
+        (tags-index (spawn tags-index (path-normalize "~/.gerbil/tags/index"))))
+    (!!tag-table.insert! tags-index inputs tagfile)))
 
 (def current-tags-table
   (make-parameter (make-hash-table)))
