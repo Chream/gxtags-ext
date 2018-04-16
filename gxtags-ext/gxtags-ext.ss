@@ -1,10 +1,13 @@
 ;;; -*- Gerbil -*-
+;;; This file is copied and modified from Gerbil Scheme
+;;; See https://github.com/vyzo/gerbil
 ;;; © vyzo
+
 ;;; Generate emacs TAGS from gerbil sources
 ;;; only exported symbols are tagged.
 ;;; Usage: gxtags [-a] [-o tags-file] file-or-directory ...
 ;;;
-;;; 2018: This file has been modified by
+;;; 2018: This file was modified by
 ;;; Christopher Eames (Chream) <chream-gmx.com>
 
 (import :gerbil/expander
@@ -370,7 +373,7 @@
   (let (index-file (path-normalize index-file))
     (ensure-file-exists! index-file)
     (let* ((tag-files (read-file-lines index-file))
-           (workers (map (lambda (file) (spawn (cut tag-file-worker file))) tag-files)))
+           (workers (map (cut spawn tag-file-worker <>) tag-files)))
       (let lp ()
         (try
          (<- ((!tag-table.lookup key k)
@@ -402,12 +405,12 @@
                   ;; Search in worker actors.
                   (for-each (cut !!tag-worker.put! act <>) inputs)
                   ;; Make new actor and add to registry.
-                  (let (act (spawn (cut tag-file-worker tagfile)))
+                  (let (act (spawn tag-file-worker tagfile))
                     (logg act)
+                    (for-each (cut !!tag-worker.put! act <>) inputs)
                     (save-tag-file! index-file tagfile)
                     (set! tag-files [tagfile . tag-files])
-                    (set! workers [act . workers])
-                    (for-each (cut !!tag-worker.put! act <>) inputs))))
+                    (set! workers [act . workers]))))
               (lp))
              ((!tag-table.stop!)
               (displayln "tags-index thread stopped: " (current-thread))))
