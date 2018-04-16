@@ -47,22 +47,6 @@
 
 (export #t)
 
-(def test-input  (path-normalize "~/repos/gerbil/gxtags-ext"))
-(def test-tagfile  (path-normalize "~/.gerbil/tags/TAGS"))
-(def test-index  (path-normalize "~/.gerbil/tags/index"))
-
-(def (run inputs tagfile)
-  (def (expand-input-paths base inputs)
-    (map (cut path-expand <> (path-directory base))
-         inputs))
-
-  (_gx#load-expander!)
-  (logg inputs)
-  (logg tagfile)
-  (let ((tagfile (path-normalize tagfile))
-        (tags-index (spawn tags-index (path-normalize "~/.gerbil/tags/index"))))
-    (!!tag-table.insert! tags-index inputs tagfile)))
-
 (def current-tags-table
   (make-parameter (make-hash-table)))
 
@@ -249,9 +233,12 @@
   (let* ((input (path-normalize input))
          (file (path-normalize file))
          (tags (tag-input input)))
+    (logg file)
     (maybe-replace-file
      file
      (lambda (json)
+       (newline)
+       (logg json)
        (cond ((json-empty? json) tags)
              (else (json-merge! json tags)
                    json)))
@@ -287,6 +274,8 @@
             (lp))
 
            ((!tag-worker.put! input)
+            (logg "In tag-worker.put!")
+            (logg input)
             (%tag-file-worker-put! file input)
             (lp))
 
@@ -322,7 +311,10 @@
         #f
         (let ((cact (car actors-1))
               (ract (cdr actors-1)))
-          (if (equal? file (!tag-worker.file cact))
+          (logg file)
+          (logg (!!tag-worker.file cact))
+          (logg (equal? file (!!tag-worker.file cact)))
+          (if (equal? file (!!tag-worker.file cact))
             cact
             (lp ract))))))
 
@@ -362,10 +354,10 @@
                 (for-each (lambda (act)
                             (json-merge! tags-table (!!tag-worker.table act)))
                           workers)
+                (logg tags-table)
                 (!!value tags-table k))
               (lp))
              ((!tag-table.workers k)
-              (displayln "workers")
               (!!value workers k)
               (lp))
              ((!tag-table.insert! inputs tagfile)
@@ -388,3 +380,8 @@
                                       (display (current-thread))
                                       (newline)
                                       (display-exception e))))))))
+
+(def current-tags-index
+  (make-parameter
+   (spawn tags-index
+          (path-normalize "~/.gerbil/tags/index"))))
