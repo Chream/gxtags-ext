@@ -1,0 +1,514 @@
+(import :std/pregexp
+        :std/srfi/1
+        :std/srfi/13
+        :std/misc/ports
+        (only-in :std/misc/string string-trim-suffix)
+        (only-in :std/misc/list push!)
+
+        :std/misc/rtd
+
+        (only-in :clan/utils/base compose if-let)
+        (only-in :clan/utils/filesystem find-files)
+        (only-in :clan/utils/hash hash-filter)
+        :gerbil/expander
+        :gerbil/core
+        <expander-runtime>
+
+        (phi: -1 <MOP>))
+
+(export #t )
+
+(def (binding-time binding)
+  (cond ((import-binding? binding)
+         {binding-time (import-binding-e binding)})
+        ((runtime-binding? binding)
+         'runtime)
+        ((syntax-binding? binding)
+         'compile-time)
+        (else (error "Unknown binding time ~s"
+                binding))))
+
+(def (src-path binding)
+  (cond ((import-binding? binding)
+         (let* ((ssi-path (module-context-path (import-binding-context binding)))
+                (ss-path (cond ((pregexp-match "/gerbil/lib/gerbil/core.ssi" ssi-path)
+                                (pregexp-replace "/gerbil/lib/gerbil/core.ssi" ssi-path
+                                                 "/gerbil/src/gerbil/prelude/core.ss"))
+                               ((pregexp-match "/.gerbil/lib" ssi-path)
+                                (let ((ns-hint (string-trim-suffix ".ssi" (cadr (pregexp-split "/lib/\\w+" ssi-path))))
+                                      (lib-src-files (find-files (path-normalize "~/.gerbil/pkg"))))
+                                  (or (filter (cut pregexp-match ns-hint <>) lib-src-files)
+                                      (filter (lambda (file) pregexp-match (binding-ns binding)) lib-src-files ))))
+                               ((pregexp-match ".ss$" ssi-path) ssi-path)
+                               (else #f))))
+           (values ss-path ssi-path)))
+        (else #f)))
+
+(def (src-grep key file)
+  (call-with-input-file file
+    (lambda (in)
+      (let lp ((line (read-line in))
+               (linum 0)
+               (linums '()))
+        (cond  ((eof-object? line) (reverse linums))
+               ((pregexp-match (symbol->string key) line)
+                (lp (read-line in) (+ linum 1) (cons linum linums)))
+               (else (lp (read-line in) (+ linum 1) linums)))))))
+
+(def (search-mb pat)
+  (let ((r '()))
+    (hash-for-each
+     (lambda (k v)
+       (if (pregexp-match pat (symbol->string k))
+         (let* (((values path mod-path) (src-path v))
+                (linum (src-grep k path)))
+           (push! (list k linum path v) r))))
+     (gx#expander-context-table (gx#current-expander-context)))
+    r))
+
+(def (get-expander-context-table)
+  (hash->list (gx#expander-context-table (gx#current-expander-context))))
+
+(def (find-import-binding2 name)
+  (let lp ((table (get-expander-context-table)))
+    (cond  ((null? table) #f)
+           ((and (list table) (eq? (caar table) name))
+            (car table))
+           (else (lp (cdr table))))))
+
+(def (all-slots struct)
+  "heyeyey"
+  (struct->list struct))
+
+(def (all-slots2 struct)
+  (let lp ((slots-left (##structure-length struct))
+           (result '()))
+    (if (= slots-left 0)
+      result
+      (lp (- slots-left 1) (cons (##vector-ref struct slots-left)
+                                 result)))))
+
+(def (all-eff-slots struct)
+  (let lp ((type (##structure-type struct))
+           (result '()))
+    (if type
+      (lp (##type-super type)
+          (cons (cons (##type-name type)
+                      (##type-fields type))
+                result))
+      (reverse result))))
+
+(def (is-procedure? key binding)
+  (procedure? (eval key)))
+(def (is-syntax? key binding)
+  (gx#syntax-binding? binding))
+(def (is-class? key binding)
+  #f)
+(def (get-documentation key binding)
+  "Did not find.")
+
+
+
+
+
+
+
+
+(defstruct foo (a b c))
+(defstruct (www foo) (d))
+(defclass bar (d e f))
+(defclass (baz bar) (g))
+
+(defstruct ggg ())
+
+
+
+;; (def (binding-source-path binding)
+;;   (let ((key (binding-id binding)))
+;;     ()))
+
+(def (binding-doc binding)
+  (cond ((import-binding? binding)
+         "is import binding.")))
+
+(def (binding-value binding)
+  (if (syntax-binding? binding)
+    #f
+    (eval (binding-id binding))))
+
+(def (symbol-tag-info sym)
+  (filter (lambda (x)
+            (pregexp-match (symbol->string sym) x))
+          (append (read-file-lines "~/.gerbil/pkg/TAGS")
+                  (read-file-lines "~/local/gerbil/src/TAGS"))))
+
+(def *apropos-info-functions* '())
+
+(def (fffff x y)
+  (car '(1 2)))
+
+(def fff (lambda (x y) 5))
+
+;; (def (apropos-list pattern)
+;;   (let ((result '()))
+;;     (hash-for-each
+;;      (lambda (k v)
+;;        (map (lambda (info-fn)
+;;               (push! (cons (cons {binding-ns v} k) (info-fn k v)) result))
+;;             *apropos-info-functions*))
+;;      (gx#expander-context-table (gx#current-expander-context)))
+;;     (if (null? result) #f (reverse result))))
+
+;; (defrules define-apropos-slot ()
+;;   ((_ name fn)
+;;    (push! (cons 'name fn) *apropos-info-functions*)))
+
+;; (define-apropos-slot type
+;;   (lambda (k v)
+;;     (cons type: {binding-type v})))
+
+;; (define-apropos-slot documentation
+;;   (lambda (k v)
+;;     "Not available."))
+
+;; (def (find-export-binding ctx id)
+;;   (cond
+;;    ((find (match <>
+;;             ((module-export _ _ 0 (eq? id)) #t)
+;;             (else #f))
+;;           (module-context-export ctx))
+;;     => core-resolve-module-export)
+;;    (else #f)))
+
+;; (def (find-runtime-symbol ctx id)
+;;   (cond
+;;    ((find-export-binding ctx id)
+;;     => (lambda (bind)
+;;          (unless (runtime-binding? bind)
+;;            (error "export is not a runtime binding" id))
+;;          (binding-id bind)))
+;;    (else
+;;     (error "module does not export symbol" (expander-context-id ctx) id))))
+
+;; ;; (symbol-table-bindings)
+
+;; ;; (current-expander-module-registry)
+
+;; ;; (special-form-binding? 'foo)
+
+;; (defrules foo ()
+;;   ((_ ids var)
+;;    (car (list ids var))))
+
+;; (defstruct bar (x y))
+;; (defstruct (lar bar) (z))
+
+;; (def (baz x) x)
+
+
+
+;; TAGS impl.
+
+
+(def current-source-file (make-parameter #f))
+(def tagfiles-paths-file (path-normalize "~/.gerbil/pkg/TAGS-FILES"))
+(def tagfiles (read-file-lines tagfiles-paths-file))
+
+(def taglines (append-map read-file-lines tagfiles))
+
+(def (taglines-filter str)
+  (cond ((not str) #f)
+        ((equal? "\f" str) #f)
+        (else str)))
+
+;; check
+
+(def (filtered-taglines)
+  (filter (lambda (x) (not (taglines-filter x))) taglines))
+
+(def (unfiltered-taglines)
+  (filter taglines-filter taglines))
+
+(def (taglines-filtered) (unfiltered-taglines))
+
+;; Done
+
+(def (split-tag-string str)
+  (let (r (pregexp-split "[\1|\177|,]" (string-trim str)))
+    r))
+
+; check
+
+(def (split-taglines-filter)
+  (filter (lambda (e) (= 6 (length (split-tag-string e)))) (taglines-filtered)))
+
+
+(def (split-taglines)
+  (map split-tag-string (taglines-filtered)))
+
+(def (split-taglines-2)
+  (filter (lambda (e) (= 2 (length e))) (split-taglines)))
+(def (split-taglines-4)
+  (filter (lambda (e) (= 4 (length e))) (split-taglines)))
+(def (split-taglines-5)
+  (filter (lambda (e) (= 5 (length e))) (split-taglines)))
+
+;; Learned
+;; 2 fields is filename and some line nr
+;; 4 is main part. anything
+;; 5 entries with string.
+
+;; done
+
+(def (definition-tag? str)
+  (or (pregexp-match "^\\(def" str)
+      ;; (pregexp-match "^\\(extern" str) ??
+      ))
+
+(def (taglines-no-def)
+  (filter (lambda (e) (not (definition-tag? (car e)))) (split-taglines)))
+
+(def (taglines-def)
+  (filter (lambda (e) (definition-tag? (car e))) (split-taglines)))
+
+;; done.
+
+;; ;; (def (test)
+;; ;;   (@expand1 '(foo 1 2)
+;;             ))
+
+(def tags '())
+
+(def (load-tags)
+  (set! tags (append-map read-tag-file
+                         (read-file-lines tagfiles-paths-file))))
+
+;; (defstruct (def-tag tag) ())
+;; (defstruct (def-proc def-tag) ())
+;; (defstruct (def-method def-tag) ())
+;; (defstruct (def-value def-tag) ())
+;; (defstruct (import-tag))
+
+
+;; (pregexp-match "\\((def(?:\\w*)?)\\s+(.*)\\s*(\\(.*\\))?(\\)|\n))" hint)
+
+
+
+(def (run-test proc)
+  (values (length (filter-map (lambda (x) (not (proc x))) tags))
+          (length (filter-map (lambda (x) (proc x)) tags))))
+
+(def (run-map-test filter-map-fn filter-map-fn-conj)
+  (values (length (filter-map-fn tags))
+          (length (filter-map-fn-conj tags))))
+
+(def (run-map-test-l filter-map-fn filter-map-fn-conj)
+  (list (filter-map-fn-conj tags)
+        (filter-map-fn tags)))
+
+(def (run-test-long proc)
+  (map (lambda (x) (if (proc x) ['success (proc x)] ['fail x])) tags))
+
+(def (split-sexp-string str) ()
+  (if (null? str)
+    #f
+    (let (r (pregexp-match "\\(([^ ]*)(?:\\s*)([^ ]*)(?:\\s*)(?:[^ ]*)(?:\\s*)(?:[^ ]*)"
+                           (car str)))
+      (if r (cons r (cdr str)) ['failed-at-sexp-split r]))))
+
+;; (def (filter-tag-map list) ;;
+;;   (filter-map (compose filter-tag-string
+;;                        split-sexp-string
+;;                        split-tag-string
+;;                        )
+;;               list))
+
+;; (def (filter-tag-map-conj list)
+;;   (filter-map (compose  (compose not filter-tag-string)
+;;                         split-sexp-string
+;;                         split-tag-string)
+;;               list))
+
+(def (test-suite)
+  (let ((fn (identity split-tag-string)))
+    (run-test split-tag-string)
+    (run-test (compose split-sexp-string split-tag-string))
+
+    ))
+
+
+(def (hint->type hint)
+  (let ((tokens (or (pregexp-match "\\((def(?:\\w*)?)\\s+(.*)\\s*(\\(.*\\))?(\\)|\n))" hint))))
+    (if tokens
+      (list (cons 'tag-type (cadr tokens))
+            (cons 'id       (caddr tokens))
+            (cons 'body     (cadddr tokens)))
+      (list (cons 'raw hint)))))
+
+
+(defstruct tag (key))
+(defstruct (etag tag) (raw))
+(defstruct (atag tag) (path))
+(defstruct (btag tag) (linum offset path))
+(defstruct (ctag btag) (hints))
+(defstruct (dtag btag) (hints))
+
+(def (parse-tag tag)
+  (let* ((tag-split (split-tag-string tag))
+         (len (length tag-split)))
+    (cond ((equal? tag-split '("\f")) #f)
+          (else
+           (case len
+             ((2)
+              (with ([path offset] tag-split)
+                (make-atag (path-directory path) path)))
+             ((4)
+              (with ([hint key line offset]
+                     tag-split)
+                (let ((processed-hints (hint->type hint)))
+                  (if (assoc 'raw processed-hints)
+                    (make-ctag (string->symbol key)
+                               (string->number line)
+                               (string->number offset)
+                               (current-source-file)
+                               processed-hints)
+                    (make-dtag (string->symbol key)
+                               (string->number line)
+                               (string->number offset)
+                               (current-source-file)
+                               processed-hints)))))
+             ((5)
+              (with ([hint _ key line offset] tag-split)
+                (let ((processed-hints (hint->type hint)))
+                  (if (assoc 'raw processed-hints)
+                    (make-ctag (string->symbol key)
+                               (string->number line)
+                               (string->number offset)
+                               (current-source-file)
+                               processed-hints)
+                    (make-dtag (string->symbol key)
+                               (string->number line)
+                               (string->number offset)
+                               (current-source-file)
+                               processed-hints)))))
+             (else (make-etag tag tag)))))))
+
+(def (read-tag-file file)
+  (let lp ((lines (read-file-lines file))
+           (tags '()))
+    (if (null? lines)
+      tags
+      (let ((tag (parse-tag (car lines))))
+        (cond ((atag? tag)
+               (parameterize ((current-source-file (atag-path tag)))
+                 (lp (cdr lines) tags)))
+              ((or (dtag? tag)
+                   (ctag? tag))
+               (lp (cdr lines) (cons tag tags)))
+              ((etag? tag) (lp (cdr lines) (cons tag tags)))
+              (else (lp (cdr lines) tags)))))))
+
+(def (search-in-tags key tags pmatch?: (pmatch? #t))
+  (def (tag-match? key tag)
+    (if pmatch?
+      (pregexp-match key (symbol->string (tag-key tag)))
+      (eq? key (tag-key tag))))
+  (let lp ((ts tags)
+           (result '()))
+    (if (null? ts)
+      (reverse result)
+      (let ((tag (car ts))
+            (rest (cdr ts)))
+        (if (tag-match? key tag)
+          (lp rest (cons tag result))
+          (lp rest result))))))
+
+(def (search-tags key pmatch?: (pmatch? #t))
+  (search-in-tags key tags pmatch?: pmatch?))
+
+(def (read-delimited open close port balance: (bal 0))
+  (let lp ((char (read-char port)))
+    (if (equal? (string char) open )
+      #t
+      (lp (read-char port))))
+  (let lp ((char (string (read-char port)))
+           (balance bal)
+               (sexp-str open))
+    ;; (displayln "char: " char " bal: " balance " str: " sexp-str)
+    (cond ((negative? balance) sexp-str)
+          ((equal? char close)
+           (lp (string (read-char port)) (- balance 1) (string-append sexp-str char)))
+          ((equal? char open)
+           (lp (string (read-char port)) (+ 1 balance) (string-append sexp-str char)))
+          (else
+           (lp (string (read-char port)) balance (string-append sexp-str char))))))
+
+(def (skip-to-line n port)
+  (let lp ((count n))
+    (if (zero? count)
+      #t
+      (begin
+        (read-line port)
+        (lp (- count 1))))))
+
+(defmethod {valid-tag-type? ctag}
+  (lambda (self)
+    (assget 'tag-type (ctag-hints self))))
+
+(defmethod {get-src ctag}
+  (lambda (self)
+    (with ((ctag key linum offset path hints) self)
+      ;;(displayln "key: " key " lin: " linum "off: " offset " path: " path " hints: " hints)
+      (if {valid-tag-type? self}
+        (call-with-input-file path
+          (lambda (in)
+            (skip-to-line (- linum 1) in)
+            (read-delimited "(" ")" in)))
+        ""))))
+
+(defmethod {get-doc ctag}
+  (lambda (this)
+    (read-delimited "\"" "\"" {get-src this})))
+
+
+;; end tags implementation.
+
+
+
+(def (find-binding name)
+  (gx#core-resolve-identifier name))
+
+(def (binding-ns binding)
+  (cond ((import-binding? binding)
+         (gx#module-context-ns (gx#import-binding-context binding)))
+        ((top-binding? binding)
+         "top-level")
+        (else (error "ns: Unknown binding type ~s" binding))))
+
+(def (binding-type binding)
+  (cond ((import-binding? binding)
+         {binding-type (import-binding-e binding)})
+        ((syntax-binding? binding)
+         'macro)
+        ((procedure? (eval (binding-id binding)))
+         'procedure)
+        ((extern-binding? binding)
+         'extern-variable)
+        ((top-binding? binding)
+         'top-level-variable)
+        (else (error "Unknown binding type ~s."
+                binding))))
+
+(defrules baf ()
+  ((foo a b)
+   (car '(1 2))))
+(def var 5)
+(defstruct lol (x))
+(defclass lom (x))
+
+(def (is-syntax-binding? sym)
+  (let (r (gx#resolve-identifier sym))
+    (if (gx#syntax-binding? sym) 'll #f)))
+
+(def (test)
+  (gx#core-context-namespace))

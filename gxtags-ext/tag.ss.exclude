@@ -1,0 +1,206 @@
+(import (only-in :std/sort sort)
+        (only-in :gerbil/gambit/ports write-string force-output read-all-as-string)
+        (only-in :std/misc/ports read-file-string)
+        (only-in :std/misc/string string-trim-prefix)
+        :std/text/json
+        (only-in :std/pregexp pregexp-match)
+        :std/srfi/1
+        :std/srfi/13
+        :std/format
+        :std/misc/repr
+        (only-in :gerbil/expander
+                 core-resolve-module-export
+                 binding-id
+                 module-export-name
+                 module-context-export)
+
+        (only-in :clan/utils/files clobber-file maybe-replace-file)
+        (only-in :clan/utils/base if-let nest !> !!>)
+        (only-in :clan/utils/hash hash-ensure-ref)
+        (only-in :clan/utils/json pretty-print-json)
+        "utils"
+        (only-in "gxtags-ext" try-import-module module-tags))
+
+(export #t)
+
+;; (def (main . args)
+;;   (def gopt
+;;     (getopt (flag 'append "-a"
+;;                   help: "append to existing tag file")
+;;             (option 'output "-o" default: "TAGS"
+;;                     help: "explicit name of file for tag table")
+;;             (flag 'help "-h" "--help"
+;;                   help: "display help")
+;;             (rest-arguments 'input
+;;                             help: "source file or directory")
+;;             (flag 'reset "--reset"
+;;                   help: "reset TAGS database")))
+
+;;   (def (help what)
+;;     (getopt-display-help what "gxtags"))
+
+;;   (try
+;;    (let (opt (getopt-parse gopt args))
+;;      (cond ((hash-get opt 'help)
+;;             (help gopt))
+;;            ((hash-get opt 'reset)
+;;             (tag-index-reset!))
+;;            (else
+;;             (let ((inputs (hash-get opt 'input)))
+;;               (if (and (null? inputs))
+;;                 (begin
+;;                   (help gopt)
+;;                   (exit 1))
+;;                 (run (hash-get opt 'input)
+;;                      (hash-get opt 'output)
+;;                      (hash-get opt 'append)))))))
+;;    (catch (getopt-error? exn)
+;;      (help exn)
+;;      (exit 1))))
+
+;; (def (run inputs tagfile append?)
+;;   (def (expand-input-paths base inputs)
+;;     (map (cut path-expand <> (path-directory base))
+;;          inputs))
+
+;;   (_gx#load-expander!)
+;;   (make-tags (expand-input-paths tagfile inputs) tagfile append?))
+
+;; (def current-tags-path
+;;   (make-parameter #f))
+
+;; ;; Tags implementation.
+
+(def tags-path
+  (make-parameter (path-normalize "~/.gerbil/tags/tags.json")))
+(def current-tags-table
+  (make-parameter (make-hash-table)))
+
+(def (make-tags inputs)
+  (let ((tags (make-hash-table)))
+    (for-each (cut tag-input <> into: tags) inputs)
+    (maybe-replace-file tags-path
+                        (lambda (json)
+                          (table-merge! (copy-json json)
+                                        tags))
+                        reader: read-json-equal
+                        writer: write json)))
+
+(def (read-tags-srcfile filename)
+  "Returns a list of tags. Format is:
+   '(ID (KEY . ROOT-MODULE) LOCATION).
+    where MODULES-EXPORTED is a list of modules where
+    the corresponding symbol is exported from. LOCATION
+    is a `locat' structure which contains the location infomation."
+
+  (cond
+   ((try-import-module filename)
+    => (lambda (ctx)
+         ;; binding-id -> [export-name ...]
+         (let ((xtab (make-hash-table-eq))
+               (xports (gx#module-context-export ctx)))
+           (for-each
+             (lambda (xport)
+               (let* ((bind (core-resolve-module-export xport))
+                      (name (module-export-name xport))
+                      (export-root-module (resolve-module-export-root-module xport ctx)))
+                 (hash-put! xtab (binding-id bind)
+                            [name export-root-module])))
+             xports)
+           (let (res (module-tags ctx xtab))
+             res))))
+   (else #f)))
+
+(def (tag-put-location! module path key locat into: (ht make-hash-table))
+  (let* ((file-table (!> ht
+                         (cut hash-ensure-ref <> module make-hash-table)
+                         (cut hash-ensure-ref <> "locations" make-hash-table)
+                         (cut hash-ensure-ref <> path make-hash-table))))
+    (hash-put! file-table (symbol->string key)
+               (if (locat? locat)
+                 (filepos-line (locat-position locat))
+                 locat))))
+
+(def (tag-srcfile srcfile into: (ht (make-hash-table)))
+  (let* ((srcfile (path-normalize srcfile))
+         (tags (read-tags-srcfile srcfile)))
+    (when tags
+      (for-each
+        (lambda (tag)
+          (with ([_ [key . root-module] locat] tag)
+            (tag-put-location! root-module srcfile key locat into: ht)))
+        tags)))
+  ht)
+
+(def (tag-directory dirname into: (ht (make-hash-table)))
+  (let* ((dirname (path-normalize dirname))
+         (files (sort (directory-files dirname) string<?))
+        (result '()))
+    (for-each
+      (lambda (file)
+        (let ((path (path-expand file dirname)))
+          (when (or (file-directory? path)
+                    (pregexp-match "[^ssxi].ss$" path))
+            (tag-input path into: ht))))
+      files))
+  ht)
+
+(def (tag-input input into: (ht (make-hash-table)))
+  (logg input)
+  (let (input (path-normalize input))
+    (if (file-exists? input)
+      (if (file-directory? input)
+        (tag-directory input into: ht)
+        (tag-srcfile input into: ht))
+      (error "No such file or directory" input)))
+  ht)
+
+(def (%tag-filter fn jtable into: (ht (make-hash-table)))
+  "NOTE: This function is important as it depends on the
+   format of the tags. If it is changed this procedure
+   might need rewriting."
+  (hash-for-each
+   (lambda (module mod-attr-ht)
+     (hash-for-each
+      (lambda (path tags)
+        (hash-for-each
+         (lambda (key locat)
+           (when (fn key module path locat)
+             (let (attr-table (make-hash-table))
+               (hash-put! attr-table "position"
+                          (tag-position locat))
+               (hash-put! attr-table "path" path)
+               (hash-put! ht key attr-table))))
+         tags))
+      (hash-get mod-attr-ht "locations")))
+   jtable)
+  ht)
+
+(def (tag-lookup key (ht (current-tags-table)))
+  (let (r (%tag-filter (lambda (ckey . rest)
+                         (equal? ckey key))
+                       ht))
+    (if (hash-single? r)
+      (hash-first-value r)
+      (error "tag lookup returned multiple values:" r))))
+
+(def (tag-search key (ht (current-tags-table)))
+  (%tag-filter (lambda (ckey . rest)
+                 (string-contains ckey key))
+               ht))
+
+(def (tag-search-regexp pat (ht (current-tags-table)))
+  (%tag-filter (lambda (key . rest)
+                 (pregexp-match pat key))
+               ht))
+
+(def (write-tags-table output (ht (current-tags-table)))
+  (write-json ht output))
+
+(def (read-tags-table input)
+  (read-json-equal input))
+
+;; accessors
+
+(def (tag-position tag-info)
+  tag-info)
