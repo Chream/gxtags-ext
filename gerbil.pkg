@@ -1,1 +1,1 @@
-(package: chream)
+(package: chream depend: '("github.com/chream/chream-utils"))
