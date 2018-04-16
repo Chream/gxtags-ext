@@ -3,6 +3,9 @@
 ;;; Generate emacs TAGS from gerbil sources
 ;;; only exported symbols are tagged.
 ;;; Usage: gxtags [-a] [-o tags-file] file-or-directory ...
+;;;
+;;; 2018: This file has been modified by
+;;; Christopher Eames (Chream) <chream-gmx.com>
 
 (import :gerbil/expander
         (only-in :gerbil/compiler/base ast-case)
