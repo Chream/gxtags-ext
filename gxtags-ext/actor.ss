@@ -80,7 +80,10 @@
                                     (display "Actor error: ")
                                     (display (current-thread))
                                     (newline)
-                                    (display-exception e)))))))
+                                    (display-exception e)
+                                    (displayln "Restarting worker..")
+                                    (newline)
+                                    (lp)))))))
 
 (defproto tag-table
   event:
