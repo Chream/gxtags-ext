@@ -362,6 +362,9 @@
               (lp))
              ((!tag-table.insert! inputs tagfile)
               (let (act (find-worker tagfile workers))
+                (logg inputs)
+                (logg tagfile)
+                (logg workers)
                 (if act
                   ;; Search in worker actors.
                   (for-each (cut !!tag-worker.put! act <>) inputs)

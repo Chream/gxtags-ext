@@ -14,6 +14,10 @@
                     help: "explicit name of file for tag index")
             (option 'output "-o" default: "TAGS"
                     help: "explicit name of file for tag table")
+            (option 'delete "-d" default: #f
+                    help: "delete TAGS file from index")
+            (flag 'list-files "-l"
+                    help: "list current TAGS files")
             (flag 'help "-h" "--help"
                   help: "display help")
             (rest-arguments 'inputs
@@ -27,15 +31,19 @@
      (logg "Running gxtags-ext.. ")
      (cond ((hash-get opt 'help)
             (help gopt))
+           ((hash-get opt 'delete)
+            (displayln "In delete.. Not implemented."))
+           ((hash-get opt 'list-files)
+            (!!tag-table.files (current-tags-index)))
            (else
-            (let ((inputs (hash-get opt 'inputs)))
-              (if (and (null? inputs))
-                (begin
-                  (help gopt)
-                  (exit 1))
-                (run inputs
-                     (hash-get opt 'output)
-                     (hash-get opt 'index)))))))
+            (let ((inputs (hash-get opt 'inputs))
+                  (output (path-normalize (hash-get opt 'output))))
+              (cond ((null? inputs)
+                     (help gopt)
+                     (exit 1))
+                    (else
+                     (_gx#load-expander!)
+                     (!!tag-table.insert! (current-tags-index) inputs output)))))))
    (catch (getopt-error? exn)
      (help exn)
      (exit 1))))
