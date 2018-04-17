@@ -5,5 +5,5 @@
   :std/build-script :std/srfi/1)
 
 (defbuild-script
-  '("gxtags-ext/tags.ss"
+  '("gxtags-ext/tag-impl.ss"
     (exe: "gxtags-ext/gxtags-ext")))

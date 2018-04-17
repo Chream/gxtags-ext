@@ -1,4 +1,4 @@
-(import :chream/gxtags-ext/tags
+(import :chream/gxtags-ext/tag-impl
         (only-in :gerbil/gambit spawn)
         :std/sugar
         :std/getopt
@@ -47,15 +47,3 @@
    (catch (getopt-error? exn)
      (help exn)
      (exit 1))))
-
-(def (run inputs tagfile indexfile)
-  (def (expand-input-paths base inputs)
-    (map (cut path-expand <> (path-directory base))
-         inputs))
-
-  (_gx#load-expander!)
-  (let ((tagfile (path-normalize tagfile)))
-    (logg (current-tags-index))
-    (logg tagfile)
-    (logg inputs)
-    (!!tag-table.insert! (current-tags-index) inputs tagfile)))
