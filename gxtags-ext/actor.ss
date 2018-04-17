@@ -126,6 +126,7 @@
     (maybe-replace-file
      file
      (lambda (json)
+       (logg json)
        (cond ((json-empty? json) tags)
              (else (json-merge! json tags)
                    json)))

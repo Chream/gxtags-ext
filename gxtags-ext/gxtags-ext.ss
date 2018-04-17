@@ -50,6 +50,7 @@
                      (_gx#load-expander!)
                      (logg inputs)
                      (logg output)
+                     (logg default-tags-table)
                      (!!tag-table.insert! default-tags-table inputs output)))))))
    (catch (getopt-error? exn)
      (help exn)
