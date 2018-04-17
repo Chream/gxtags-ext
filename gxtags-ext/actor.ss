@@ -16,13 +16,6 @@
 (export #t)
 
 ;;
-;; Exported state
-;;
-(def default-tags-index
-  (spawn tags-index
-         (path-normalize "~/.gerbil/tags/default-index")))
-
-;;
 ;; Main tag-table actor
 ;;
 
@@ -43,7 +36,7 @@
   (search key)
   (search-regexp key))
 
-(def (tags-index index-file)
+(def (tags-table-actor index-file)
   (def (find-worker file actors)
     (let lp ((actors-1 actors))
       (if (null? actors-1)
@@ -98,9 +91,9 @@
                   (set! workers [act . workers]))
                 (for-each (cut !!tag-worker.put! act <>) inputs)))
              ((!tag-table.stop!)
-              (displayln "tags-index thread stopped: " (current-thread))))
+              (displayln "tags-table-actor thread stopped: " (current-thread))))
          (catch (exception? e) (begin (newline)
-                                      (display "Actor error-tags-index: ")
+                                      (display "Actor error-tags-table-actor: ")
                                       (display (current-thread))
                                       (newline)
                                       (display-exception e)
@@ -175,3 +168,10 @@
        (finally (begin (when new?
                          (set! new? #f))
                        (lp)))))))
+
+;;
+;; Exported state
+;;
+(def default-tags-table
+  (spawn tags-table-actor
+         (path-normalize "~/.gerbil/tags/default-index")))

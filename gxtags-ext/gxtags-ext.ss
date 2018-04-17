@@ -38,7 +38,7 @@
            ((hash-get opt 'delete)
             (displayln "In delete.. Not implemented."))
            ((hash-get opt 'list-files)
-            (!!tag-table.files default-tags-index))
+            (!!tag-table.files default-tags-table))
            (else
             (let ((inputs (hash-get opt 'inputs))
                   (output (path-normalize (hash-get opt 'output))))
@@ -50,7 +50,7 @@
                      (_gx#load-expander!)
                      (logg inputs)
                      (logg output)
-                     (!!tag-table.insert! default-tags-index inputs output)))))))
+                     (!!tag-table.insert! default-tags-table inputs output)))))))
    (catch (getopt-error? exn)
      (help exn)
      (exit 1))))
