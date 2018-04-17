@@ -4,10 +4,13 @@
         :chream/utils/all
         :chream/gxtags-ext/actor)
 
-(export main test-input test-output)
+(export #t)
 
-(def test-input  (path-normalize "~/repos/gerbil/gxtags-ext"))
-(def test-output (path-normalize "~/.gerbil/tags/TAGS"))
+(def test-input  (path-normalize "~/local/gerbil/src"))
+(def test-output (path-normalize "~/.gerbil/tags/std-tags.json"))
+
+(def test-input2  (path-normalize "~/repos/gerbil/gxtags-ext/gxtags-ext/tag-impl.ss"))
+(def test-output2 (path-normalize "~/.gerbil/tags/tag-impl-tags.json"))
 
 (def (main . args)
   (def gopt
@@ -35,15 +38,18 @@
            ((hash-get opt 'delete)
             (displayln "In delete.. Not implemented."))
            ((hash-get opt 'list-files)
-            (!!tag-table.files (default-tags-index)))
+            (!!tag-table.files default-tags-index))
            (else
             (let ((inputs (hash-get opt 'inputs))
                   (output (path-normalize (hash-get opt 'output))))
+              (ensure-file-exists! output)
               (cond ((null? inputs)
                      (help gopt)
                      (exit 1))
                     (else
                      (_gx#load-expander!)
+                     (logg inputs)
+                     (logg output)
                      (!!tag-table.insert! default-tags-index inputs output)))))))
    (catch (getopt-error? exn)
      (help exn)
