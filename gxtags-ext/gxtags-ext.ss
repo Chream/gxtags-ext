@@ -1,12 +1,13 @@
-(import :chream/gxtags-ext/tag-impl
-        (only-in :gerbil/gambit spawn)
-        :std/sugar
+(import :std/sugar
         :std/getopt
-        :chream/utils/all)
 
-(export main test-input)
+        :chream/utils/all
+        :chream/gxtags-ext/actor)
+
+(export main test-input test-output)
 
 (def test-input  (path-normalize "~/repos/gerbil/gxtags-ext"))
+(def test-output (path-normalize "~/.gerbil/tags/TAGS"))
 
 (def (main . args)
   (def gopt
@@ -34,7 +35,7 @@
            ((hash-get opt 'delete)
             (displayln "In delete.. Not implemented."))
            ((hash-get opt 'list-files)
-            (!!tag-table.files (current-tags-index)))
+            (!!tag-table.files (default-tags-index)))
            (else
             (let ((inputs (hash-get opt 'inputs))
                   (output (path-normalize (hash-get opt 'output))))
@@ -43,7 +44,7 @@
                      (exit 1))
                     (else
                      (_gx#load-expander!)
-                     (!!tag-table.insert! (current-tags-index) inputs output)))))))
+                     (!!tag-table.insert! default-tags-index inputs output)))))))
    (catch (getopt-error? exn)
      (help exn)
      (exit 1))))

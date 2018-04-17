@@ -6,4 +6,5 @@
 
 (defbuild-script
   '("gxtags-ext/tag-impl.ss"
+    "gxtags-ext/actor.ss"
     (exe: "gxtags-ext/gxtags-ext")))

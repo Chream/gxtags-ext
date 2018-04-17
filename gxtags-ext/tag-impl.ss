@@ -14,13 +14,8 @@
         (only-in :gerbil/compiler/base ast-case)
         (only-in <syntax-case> syntax)
         (only-in :std/srfi/1 append-map)
-        :gerbil/gambit
-        :std/getopt
-        :std/sort
         :std/sugar
         :std/sort
-        :std/text/utf8
-        :std/text/json
         :std/misc/ports
         (only-in :std/srfi/13 string-contains)
         :std/misc/repr
@@ -30,19 +25,8 @@
 
         (only-in :clan/utils/base !> if-let)
         (only-in :clan/utils/hash hash-ensure-ref)
-        (only-in :clan/utils/files maybe-replace-file)
 
-        :std/actor
-
-        :chream/utils/text/json
-        (only-in :chream/utils/gerbil/context resolve-module-export-root-module)
-
-        (only-in :chream/utils/misc/asserts check-type)
-        (only-in :chream/utils/misc/files file-directory? ensure-file-exists! )
-        (only-in :chream/utils/misc/debug logg)
-        :chream/utils/misc/location
-
-        :chream/utils/misc/repr
+        :chream/utils/all
         )
 
 (export #t)
@@ -216,175 +200,3 @@
                            tag)
                     #f)))
               (json-get table "tags")))
-
-(defproto tag-worker
-  event:
-  (put! input)
-  (del! key)
-  (stop!)
-  call:
-  (table)
-  (file)
-  (lookup key)
-  (search key)
-  (search-regexp key))
-
-(def (%tag-file-worker-put! file input)
-  (let* ((input (path-normalize input))
-         (file (path-normalize file))
-         (tags (tag-input input)))
-    (logg file)
-    (maybe-replace-file
-     file
-     (lambda (json)
-       (newline)
-       (logg json)
-       (cond ((json-empty? json) tags)
-             (else (json-merge! json tags)
-                   json)))
-     reader: read-json-equal
-     writer: write-json)))
-
-(def (tag-file-worker file)
-  (let (file (path-normalize file))
-    (ensure-json-file-exists! file)
-    (let lp ()
-      (try
-       (<- ((!tag-worker.lookup key k)
-            (let (tag-table (read-json-equal-file file))
-              (!!value (tag-lookup key tag-table) k)
-              (lp)))
-
-           ((!tag-worker.search key k)
-            (let (tag-table (read-json-equal-file file))
-              (!!value (tag-search key tag-table) k)
-              (lp)))
-
-           ((!tag-worker.search-regexp key k)
-            (let (tag-table (read-json-equal-file file))
-              (!!value (tag-search-regexp key tag-table) k)
-              (lp)))
-
-           ((!tag-worker.file k)
-            (!!value file k)
-            (lp))
-
-           ((!tag-worker.table k)
-            (!!value (read-json-equal-file file) k)
-            (lp))
-
-           ((!tag-worker.put! input)
-            (logg "In tag-worker.put!")
-            (logg input)
-            (%tag-file-worker-put! file input)
-            (lp))
-
-           ((!tag-worker.stop!)
-            (displayln "tag-file-worker thread stopped: " (current-thread))
-            (void)))
-       (catch (exception? e) (begin (newline)
-                                    (display "Actor error: ")
-                                    (display (current-thread))
-                                    (newline)
-                                    (display-exception e)))))))
-
-(defproto tag-table
-  event:
-  (insert! input tagfile)
-  (delete! input tagfile)
-  (stop!)
-  call:
-  (table)
-  (files)
-  (workers)
-  (lookup-in-file key tagfile)
-  (search-in-file key tagfile)
-  (search-regexp-in-file key tagfile)
-  (lookup key)
-  (search key)
-  (search-regexp key))
-
-(def (tags-index index-file)
-  (def (find-worker file actors)
-    (let lp ((actors-1 actors))
-      (if (null? actors-1)
-        #f
-        (let ((cact (car actors-1))
-              (ract (cdr actors-1)))
-          (logg file)
-          (logg (!!tag-worker.file cact))
-          (logg (equal? file (!!tag-worker.file cact)))
-          (if (equal? file (!!tag-worker.file cact))
-            cact
-            (lp ract))))))
-
-  (def (save-tag-file! index-file new-tagfile)
-    (let (act #f)
-      (maybe-replace-file
-       index-file
-       (lambda (files)
-         (sort [new-tagfile . files] string<?))
-       reader: read-all-as-lines
-       writer: (lambda (lines out)
-                 (for-each (lambda (path)
-                             (write-string path out)
-                             (newline out))
-                           lines)))))
-
-  (let (index-file (path-normalize index-file))
-    (ensure-file-exists! index-file)
-    (let* ((tag-files (read-file-lines index-file))
-           (workers (map (cut spawn tag-file-worker <>) tag-files)))
-      (let lp ()
-        (try
-         (<- ((!tag-table.lookup key k)
-              (!!value  (append-map (cut !!tag-worker.lookup <> key) workers) k)
-              (lp))
-             ((!tag-table.search key k)
-              (!!value  (append-map (cut !!tag-worker.search <> key) workers) k)
-              (lp))
-             ((!tag-table.search-regexp key k)
-              (!!value  (append-map (cut !!tag-worker.search-regexp <> key) workers) k)
-              (lp))
-             ((!tag-table.files k)
-              (!!value tag-files k)
-              (lp))
-             ((!tag-table.table k)
-              (let ((tags-table (make-json)))
-                (for-each (lambda (act)
-                            (json-merge! tags-table (!!tag-worker.table act)))
-                          workers)
-                (logg tags-table)
-                (!!value tags-table k))
-              (lp))
-             ((!tag-table.workers k)
-              (!!value workers k)
-              (lp))
-             ((!tag-table.insert! inputs tagfile)
-              (let (act (find-worker tagfile workers))
-                (logg inputs)
-                (logg tagfile)
-                (logg workers)
-                (if act
-                  ;; Search in worker actors.
-                  (for-each (cut !!tag-worker.put! act <>) inputs)
-                  ;; Make new actor and add to registry.
-                  (let (act (spawn tag-file-worker tagfile))
-                    (logg act)
-                    (for-each (cut !!tag-worker.put! act <>) inputs)
-                    (save-tag-file! index-file tagfile)
-                    (set! tag-files [tagfile . tag-files])
-                    (set! workers [act . workers]))))
-              (lp))
-             ((!tag-table.stop!)
-              (displayln "tags-index thread stopped: " (current-thread))))
-         (catch (exception? e) (begin (newline)
-                                      (display "Actor error-tags-index: ")
-                                      (display (current-thread))
-                                      (newline)
-                                      (display-exception e))))))))
-
-(def current-tags-index
-  (make-parameter
-   (spawn tags-index
-          (path-normalize "~/.gerbil/tags/index"))))
