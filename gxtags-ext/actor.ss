@@ -34,11 +34,6 @@
 (def index-thread-group
   (make-parameter (make-thread-group 'tag-indicies)))
 
-(def (worker-thread-list)
-  (thread-group->thread-list (worker-thread-group)))
-(def (index-thread-list)
-  (thread-group->thread-list (index-thread-group)))
-
 ;; setters/getters
 
 (def (find-actor name thread-group)
@@ -57,7 +52,7 @@
     (logg (thread-name w))
     w))
 
-(def (spawn-index index-file)
+(def (spawn-index (index-file "~/.gerbil/tags/default-index"))
   (let* ((index-file (path-normalize index-file))
          (i (spawn-actor tags-table-actor
                          [index-file]
@@ -82,6 +77,12 @@
 (def (stop-indicies)
   (for-each (cut !!tag-worker.stop! <>)
             (thread-group->thread-list (index-thread-group))))
+
+(def (worker-thread-list)
+  (thread-group->thread-list (worker-thread-group)))
+
+(def (index-thread-list)
+  (thread-group->thread-list (index-thread-group)))
 
 ;;
 ;; Main tag-table actor
