@@ -33,7 +33,6 @@
 
   (try
    (let (opt (getopt-parse gopt args))
-     (logg "Running gxtags-ext.. ")
      (cond ((hash-get opt 'help)
             (help gopt))
            ((hash-get opt 'delete)

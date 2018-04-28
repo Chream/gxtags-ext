@@ -160,7 +160,6 @@
                                       (lp tag-files)))))))
   (try
    (let* ((index-file (path-normalize index-file)))
-     (logg "Creating table actor")
      (ensure-file-exists! index-file)
      ;; If not, create new actor.
      (make-tags-table-actor index-file))
