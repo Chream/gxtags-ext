@@ -230,7 +230,7 @@
 
 (def (simple-actor-exception-handler e)
   (newline)
-  (display "Worker Actor error: ")
+  (display "Simple Actor error: ")
   (display (current-thread))
   (newline)
   (display-exception e)  (displayln "Restarting worker..")
