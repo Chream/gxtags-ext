@@ -23,7 +23,7 @@
         (only-in :clan/utils/files maybe-replace-file)
 
         :chream/utils/all
-        :chream/gxtags-ext/tag-impl)
+        "tag-impl")
 
 (export #t)
 
