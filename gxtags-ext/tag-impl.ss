@@ -161,7 +161,6 @@
   ht)
 
 (def (tag-input input into: (ht (make-hash-table)))
-  (logg input)
   (let (input (path-normalize input))
     (if (file-exists? input)
       (if (file-directory? input)
