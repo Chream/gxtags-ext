@@ -48,8 +48,6 @@
                          [tag-file]
                          tag-file
                          (worker-thread-group))))
-    (logg "adding worker!")
-    (logg (thread-name w))
     w))
 
 (def (spawn-index (index-file "~/.gerbil/tags/default-index"))
@@ -58,8 +56,6 @@
                          [index-file]
                          index-file
                          (index-thread-group))))
-    (logg "adding index!")
-    (logg (thread-name i))
     i))
 
 (def (maybe-spawn-worker tag-file)
