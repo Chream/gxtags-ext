@@ -67,14 +67,16 @@
     (if w w (spawn-index index-file))))
 
 (def (stop-worker tag-file)
-  (!!tag-table.stop! (find-actor (path-normalize tag-file) (worker-thread-group))))
+  (!!tag-worker.stop! (find-actor (path-normalize tag-file)
+                                  (worker-thread-group))))
 
 (def (stop-workers)
   (for-each (cut !!tag-worker.stop! <>)
             (thread-group->thread-list (worker-thread-group))))
 
 (def (stop-index index-file)
-  (!!tag-table.stop! (find-actor (path-normalize index-file) (index-thread-group))))
+  (!!tag-table.stop! (find-actor (path-normalize index-file)
+                                 (index-thread-group))))
 
 (def (stop-indicies)
   (for-each (cut !!tag-worker.stop! <>)
