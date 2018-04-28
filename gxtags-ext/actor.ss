@@ -117,10 +117,11 @@
 
   (defrules workers-collect-with ()
     ((_ fn files key)
-     (filter-map (lambda (w)
-                   (and (member (thread-name w) files)
-                        (fn w key)))
-                 (thread-group->thread-list (worker-thread-group)))))
+     (apply append
+       (filter-map (lambda (w)
+                     (and (member (thread-name w) files)
+                          (fn w key)))
+                   (thread-group->thread-list (worker-thread-group))))))
 
   (def (make-tags-table-actor index-file)
     (let (tag-files (read-file-lines index-file))
