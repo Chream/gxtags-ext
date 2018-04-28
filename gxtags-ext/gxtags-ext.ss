@@ -1,8 +1,9 @@
 (import :std/sugar
         :std/getopt
+        (only-in :gerbil/gambit thread-group->thread-list display-exception)
 
         :chream/utils/all
-        :chream/gxtags-ext/actor)
+        "actor")
 
 (export #t)
 
@@ -14,14 +15,14 @@
 
 (def (main . args)
   (def gopt
-    (getopt (option 'index "-i" default: (path-normalize "~/.gerbil/tags/index")
+    (getopt (option 'index "-i" default: "~/.gerbil/tags/default-index"
                     help: "explicit name of file for tag index")
-            (option 'output "-o" default: "TAGS"
+            (option 'output "-o" default: "TAGS.json"
                     help: "explicit name of file for tag table")
             (option 'delete "-d" default: #f
                     help: "delete TAGS file from index")
             (flag 'list-files "-l"
-                    help: "list current TAGS files")
+                  help: "list all TAGS files")
             (flag 'help "-h" "--help"
                   help: "display help")
             (rest-arguments 'inputs
@@ -38,20 +39,25 @@
            ((hash-get opt 'delete)
             (displayln "In delete.. Not implemented."))
            ((hash-get opt 'list-files)
-            (!!tag-table.files default-tags-table))
+            (map (cut !!tag-table.files <>)
+                 (thread-group->thread-list
+                  (index-thread-group))))
            (else
             (let ((inputs (hash-get opt 'inputs))
-                  (output (path-normalize (hash-get opt 'output))))
+                  (output (hash-get opt 'output))
+                  (index  (hash-get opt 'index)))
               (ensure-file-exists! output)
-              (cond ((null? inputs)
-                     (help gopt)
-                     (exit 1))
-                    (else
-                     (_gx#load-expander!)
-                     (logg inputs)
-                     (logg output)
-                     (logg default-tags-table)
-                     (!!tag-table.insert! default-tags-table inputs output)))))))
+              (when (null? inputs)
+                (help gopt)
+                (exit 1))
+              (_gx#load-expander!)
+              (let (tag-table (spawn-index index))
+                (!!tag-table.insert! tag-table inputs output)
+                (for-each (cut stop-worker <>) (!!tag-table.files tag-table))
+                (stop-index index))))))
    (catch (getopt-error? exn)
      (help exn)
-     (exit 1))))
+     (display-exception exn)
+     (exit 1))
+   (catch (exception? e) (begin (logg "here")
+                                (display-exception e)))))
