@@ -52,7 +52,7 @@
                 (exit 1))
               (_gx#load-expander!)
               (let (tag-table (spawn-index index))
-                (!!tag-table.insert! tag-table inputs output)
+                (!!tag-table.insert! tag-table inputs (path-normalize output))
                 (for-each (cut stop-worker <>) (!!tag-table.files tag-table))
                 (stop-index index))))))
    (catch (getopt-error? exn)
