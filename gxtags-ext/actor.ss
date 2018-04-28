@@ -186,9 +186,11 @@
     (maybe-replace-file
      file
      (lambda (json)
+       (when (eof-object? json)
+         (set! json (make-json)))
        (cond ((json-empty? json) tags)
-             (else (json-merge! json tags)
-                   json)))
+             (else (json-merge! tags json)
+                   tags)))
      reader: read-json-equal
      writer: write-json)))
 
