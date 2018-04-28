@@ -2,10 +2,6 @@
 ;;; This file is copied and modified from Gerbil Scheme
 ;;; See https://github.com/vyzo/gerbil
 ;;; © vyzo
-
-;;; Generate emacs TAGS from gerbil sources
-;;; only exported symbols are tagged.
-;;; Usage: gxtags [-a] [-o tags-file] file-or-directory ...
 ;;;
 ;;; 2018: This file was modified by
 ;;; Christopher Eames (Chream) <chream-gmx.com>
