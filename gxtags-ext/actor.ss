@@ -109,7 +109,7 @@
     (maybe-replace-file
      index-file
      (lambda (files)
-       (sort [new-tagfile . files] string<?))
+       (delete-duplicates (sort [new-tagfile . files] string<?)))
      reader: read-all-as-lines
      writer: (lambda (lines out)
                (for-each (lambda (path)
