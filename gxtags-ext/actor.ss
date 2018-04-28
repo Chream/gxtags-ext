@@ -63,16 +63,22 @@
     i))
 
 (def (maybe-spawn-worker tag-file)
-  (let (w (find-actor tag-file (worker-thread-group)))
+  (let* (w (find-actor (path-normalize tag-file) (worker-thread-group)))
     (if w w (spawn-worker tag-file))))
 
 (def (maybe-spawn-index index-file)
-  (let (w (find-actor index-file (index-thread-group)))
+  (let* (w (find-actor (path-normalize index-file) (index-thread-group)))
     (if w w (spawn-index index-file))))
+
+(def (stop-worker tag-file)
+  (!!tag-table.stop! (find-actor (path-normalize tag-file) (worker-thread-group))))
 
 (def (stop-workers)
   (for-each (cut !!tag-worker.stop! <>)
             (thread-group->thread-list (worker-thread-group))))
+
+(def (stop-index index-file)
+  (!!tag-table.stop! (find-actor (path-normalize index-file) (index-thread-group))))
 
 (def (stop-indicies)
   (for-each (cut !!tag-worker.stop! <>)
